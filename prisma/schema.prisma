@@ -1,0 +1,149 @@
+// ListsManager — reusable checklist templates with recurring instances.
+// SQLite via better-sqlite3 driver adapter (see src/lib/prisma.ts).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String // bcrypt hash
+  role      String   @default("member") // "admin" | "member"
+  createdAt DateTime @default(now())
+
+  createdTemplates  Template[]      @relation("TemplateCreator")
+  createdChecklists Checklist[]     @relation("ChecklistCreator")
+  assignedChecklists Checklist[]    @relation("ChecklistAssignee")
+  assignedItems     ChecklistItem[] @relation("ItemAssignee")
+  notifications     Notification[]
+  attachments       Attachment[]
+}
+
+// A reusable master template. Copying it into a Checklist never mutates it.
+model Template {
+  id          String   @id @default(cuid())
+  title       String
+  description String   @default("")
+  category    String   @default("general") // free-form grouping label
+  // "none" | "daily" | "weekly" | "fortnightly" | "monthly" | "quarterly" | "yearly"
+  recurrence  String   @default("none")
+  archived    Boolean  @default(false)
+  createdById String
+  createdBy   User     @relation("TemplateCreator", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items        TemplateItem[]
+  customFields CustomFieldDef[]
+  checklists   Checklist[]
+}
+
+model TemplateItem {
+  id         String  @id @default(cuid())
+  templateId String
+  template   Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  text       String
+  priority   String? // "low" | "medium" | "high"
+  sortOrder  Int     @default(0)
+}
+
+model CustomFieldDef {
+  id         String   @id @default(cuid())
+  templateId String
+  template   Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  name       String
+  type       String // "text" | "dropdown" | "user"
+  options    String  @default("[]") // JSON array of strings (dropdown only)
+  required   Boolean @default(true)
+  sortOrder  Int     @default(0)
+}
+
+// A working instance, optionally copied from a Template.
+model Checklist {
+  id          String    @id @default(cuid())
+  title       String
+  description String    @default("")
+  category    String    @default("general")
+  status      String    @default("active") // "active" | "completed"
+  priority    String    @default("medium") // "low" | "medium" | "high"
+  // Copied from the template at creation so ad-hoc lists can also recur.
+  recurrence  String    @default("none")
+  dueDate     DateTime?
+  completedAt DateTime?
+
+  templateId String?
+  template   Template? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  // Recurrence chain: set once when the next instance is spawned; also the
+  // double-spawn guard (spawn only if null).
+  nextInstanceId String? @unique
+
+  createdById  String
+  createdBy    User    @relation("ChecklistCreator", fields: [createdById], references: [id])
+  assignedToId String?
+  assignedTo   User?   @relation("ChecklistAssignee", fields: [assignedToId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items       ChecklistItem[]
+  fieldValues CustomFieldValue[]
+}
+
+model ChecklistItem {
+  id          String    @id @default(cuid())
+  checklistId String
+  checklist   Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  text        String
+  checked     Boolean   @default(false)
+  notes       String    @default("")
+  priority    String?
+  sortOrder   Int       @default(0)
+
+  assignedToId String?
+  assignedTo   User?   @relation("ItemAssignee", fields: [assignedToId], references: [id])
+  checkedByName String?
+  checkedAt    DateTime?
+
+  attachments Attachment[]
+}
+
+model CustomFieldValue {
+  id          String    @id @default(cuid())
+  checklistId String
+  checklist   Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  name        String
+  type        String
+  value       String    @default("")
+}
+
+// File metadata; bytes live on disk under DATA_DIR/attachments/.
+model Attachment {
+  id           String        @id @default(cuid())
+  itemId       String
+  item         ChecklistItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  fileName     String
+  mimeType     String
+  size         Int
+  storagePath  String // relative path under the attachments dir
+  uploadedById String
+  uploadedBy   User   @relation(fields: [uploadedById], references: [id])
+  createdAt    DateTime @default(now())
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  body        String
+  read        Boolean  @default(false)
+  checklistId String?
+  createdAt   DateTime @default(now())
+}

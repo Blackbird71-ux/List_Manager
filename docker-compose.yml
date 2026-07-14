@@ -1,0 +1,59 @@
+# =============================================================================
+# ListsManager – docker-compose.yml
+#
+# Usage on the Synology NAS:
+#   Build + start:  docker compose up -d --build
+#   Logs:           docker compose logs -f
+#   Stop:           docker compose down
+#
+# Persistent data (SQLite database, attachments, backups) lives under
+# /volume1/docker/listsmanager/Data which is bind-mounted to /data.
+# Migrations run automatically at startup via entrypoint.sh.
+# =============================================================================
+
+services:
+  listsmanager-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: listsmanager:latest
+    container_name: listsmanager-app
+    restart: unless-stopped
+
+    env_file: .env.local
+
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:/data/listsmanager.db
+      - DATA_DIR=/data
+      - AUTH_URL=https://lists.liddleapps.com
+      - TZ=Australia/Sydney
+
+    ports:
+      - "3002:3000"
+
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+
+    volumes:
+      # Persistent data volume on the NAS.
+      # Contains: listsmanager.db, attachments/, backups/
+      - /volume1/docker/listsmanager/Data:/data
+      # Cloudflare tunnel configuration
+      - /volume1/docker/listsmanager/cloudflared:/etc/cloudflared
+
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s   # give migrations time to finish on first boot
+
+    networks:
+      - listsmanager-network
+
+networks:
+  listsmanager-network:
+    driver: bridge
+    name: listsmanager-network

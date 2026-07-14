@@ -1,0 +1,52 @@
+import { NextResponse } from 'next/server'
+import { z } from 'zod'
+import { auth } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+
+const createSchema = z.object({
+  text: z.string().trim().min(1).max(500),
+  priority: z.enum(['low', 'medium', 'high']).nullish(),
+  assignedToId: z.string().nullish(),
+})
+
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth()
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const { id } = await params
+  const body = await request.json().catch(() => null)
+  const parsed = createSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
+  }
+
+  const checklist = await prisma.checklist.findUnique({ where: { id }, select: { id: true } })
+  if (!checklist) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
+  const last = await prisma.checklistItem.findFirst({
+    where: { checklistId: id },
+    orderBy: { sortOrder: 'desc' },
+    select: { sortOrder: true },
+  })
+
+  const item = await prisma.checklistItem.create({
+    data: {
+      checklistId: id,
+      text: parsed.data.text,
+      priority: parsed.data.priority ?? null,
+      assignedToId: parsed.data.assignedToId ?? null,
+      sortOrder: (last?.sortOrder ?? -1) + 1,
+    },
+    include: {
+      assignedTo: { select: { id: true, name: true, email: true } },
+      attachments: {
+        select: { id: true, fileName: true, mimeType: true, size: true, createdAt: true },
+      },
+    },
+  })
+  return NextResponse.json({ item }, { status: 201 })
+}
