@@ -12,9 +12,13 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('reset') === '1') {
+      setNotice('Password updated — sign in with your new password.')
+    }
     fetch('/api/register')
       .then((res) => res.json())
       .then((data) => setBootstrap(Boolean(data.open)))
@@ -105,6 +109,7 @@ export default function LoginPage() {
           </div>
 
           {error && <p className="text-sm text-danger">{error}</p>}
+          {notice && !error && <p className="text-sm text-ink">{notice}</p>}
 
           <button
             type="submit"
@@ -113,6 +118,14 @@ export default function LoginPage() {
           >
             {busy ? 'Please wait…' : bootstrap ? 'Create admin account' : 'Sign in'}
           </button>
+
+          {!bootstrap && (
+            <p className="text-center text-sm">
+              <a href="/reset-password" className="text-accent hover:underline">
+                Forgot password?
+              </a>
+            </p>
+          )}
         </form>
       </div>
     </div>

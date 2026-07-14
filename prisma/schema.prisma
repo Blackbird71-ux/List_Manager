@@ -17,6 +17,10 @@ model User {
   role      String   @default("member") // "admin" | "manager" | "member"
   createdAt DateTime @default(now())
 
+  // Self-service password reset: sha256 of the emailed one-time token.
+  resetTokenHash      String?
+  resetTokenExpiresAt DateTime?
+
   createdTemplates  Template[]      @relation("TemplateCreator")
   createdChecklists Checklist[]     @relation("ChecklistCreator")
   assignedChecklists Checklist[]    @relation("ChecklistAssignee")

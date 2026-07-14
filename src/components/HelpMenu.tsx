@@ -156,6 +156,13 @@ function topicsFor(pathname: string): { heading: string; topics: HelpTopic[] } {
             'Admin: everything a manager has, plus user management and the remote-access tunnel.',
           ],
         },
+        {
+          title: 'Password resets',
+          points: [
+            'Use the key button on a user to set a new password for them directly.',
+            'Users can also reset their own password from the "Forgot password?" link on the sign-in screen — this emails them a one-time link, so SMTP must be configured in the server environment.',
+          ],
+        },
       ],
     }
   }
