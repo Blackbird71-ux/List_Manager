@@ -93,7 +93,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         })),
       })
     }
-    return tx.template.update({ where: { id }, data: scalars, include: templateInclude })
+    return tx.template.update({
+      where: { id },
+      // Structural edits (items/fields) bump the version so checklists can
+      // show which template version they ran from.
+      data: items || customFields ? { ...scalars, version: { increment: 1 } } : scalars,
+      include: templateInclude,
+    })
   })
 
   return NextResponse.json({ template })

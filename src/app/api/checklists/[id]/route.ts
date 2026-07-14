@@ -6,6 +6,7 @@ import { RECURRENCE_OPTIONS } from '@/lib/recurrence'
 import { canAccessChecklist, canManageChecklist, checklistAccessWhere } from '@/lib/access'
 import { completeChecklist, getChecklistInclude } from '@/lib/checklist-helpers'
 import { notify } from '@/lib/notifications'
+import { logActivity } from '@/lib/activity'
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
@@ -125,6 +126,23 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   // Completion goes through the shared funnel so recurrence spawns exactly once.
   if (status === 'completed' && existing.status !== 'completed') {
     await completeChecklist(id)
+    logActivity(id, session.user.name, 'completed')
+  } else if (status === 'active' && existing.status === 'completed') {
+    logActivity(id, session.user.name, 'reopened')
+  }
+
+  if (visibility !== undefined) {
+    logActivity(id, session.user.name, 'visibility_changed', `now ${visibility}`)
+  }
+  if (sharedUserIds !== undefined) {
+    logActivity(id, session.user.name, 'shared', 'sharing updated')
+  }
+  if (
+    Object.keys(scalars).length > 0 ||
+    dueDate !== undefined ||
+    fieldValues !== undefined
+  ) {
+    logActivity(id, session.user.name, 'edited')
   }
 
   // Notify a newly assigned user.
@@ -138,6 +156,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       'Checklist assigned to you',
       `You have been assigned "${scalars.title ?? existing.title}".`,
       id
+    )
+  }
+  if (assignedToId !== undefined && assignedToId !== existing.assignedToId) {
+    const assignee = assignedToId
+      ? await prisma.user.findUnique({ where: { id: assignedToId }, select: { name: true } })
+      : null
+    logActivity(
+      id,
+      session.user.name,
+      'assigned',
+      assignee ? `to ${assignee.name}` : 'unassigned'
     )
   }
 

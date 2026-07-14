@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { CheckCircle2, ChevronLeft, ChevronRight, Lock, Search } from 'lucide-react'
+import { CheckCircle2, ChevronLeft, ChevronRight, Download, Lock, Search } from 'lucide-react'
 import type { ApiChecklist } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -109,6 +109,16 @@ export function CompletedClient() {
             </option>
           ))}
         </select>
+
+        <a
+          href={`/api/checklists/export?status=completed${
+            query ? `&q=${encodeURIComponent(query)}` : ''
+          }${categoryFilter ? `&category=${encodeURIComponent(categoryFilter)}` : ''}`}
+          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-muted hover:bg-hover"
+          title="Download the filtered list as CSV"
+        >
+          <Download className="h-4 w-4" /> Export CSV
+        </a>
       </div>
 
       {loading ? (

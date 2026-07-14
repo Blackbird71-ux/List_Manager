@@ -24,6 +24,7 @@ model User {
   notifications     Notification[]
   attachments       Attachment[]
   checklistShares   ChecklistShare[]
+  comments          Comment[]
 }
 
 // A reusable master template. Copying it into a Checklist never mutates it.
@@ -35,6 +36,9 @@ model Template {
   // "none" | "daily" | "weekly" | "fortnightly" | "monthly" | "quarterly" | "yearly"
   recurrence  String   @default("none")
   archived    Boolean  @default(false)
+  // Bumped whenever the template's items or fields are edited, so completed
+  // checklists can show which version of the template they ran from.
+  version     Int      @default(1)
   createdById String
   createdBy   User     @relation("TemplateCreator", fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
@@ -83,6 +87,8 @@ model Checklist {
 
   templateId String?
   template   Template? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  // Snapshot of template.version at creation time (null for ad-hoc lists).
+  templateVersion Int?
 
   // Recurrence chain: set once when the next instance is spawned; also the
   // double-spawn guard (spawn only if null).
@@ -99,6 +105,38 @@ model Checklist {
   items       ChecklistItem[]
   fieldValues CustomFieldValue[]
   shares      ChecklistShare[]
+  comments    Comment[]
+  activity    ActivityLog[]
+}
+
+// A comment on a checklist — the conversation half of the activity feed.
+model Comment {
+  id          String    @id @default(cuid())
+  checklistId String
+  checklist   Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User      @relation(fields: [authorId], references: [id])
+  body        String
+  createdAt   DateTime  @default(now())
+
+  @@index([checklistId, createdAt])
+}
+
+// Audit trail of who changed what on a checklist. Actor name is denormalized
+// so the history survives user deletion.
+model ActivityLog {
+  id          String    @id @default(cuid())
+  checklistId String
+  checklist   Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  actorName   String
+  // "created" | "item_checked" | "item_unchecked" | "item_added" | "item_removed"
+  // | "completed" | "reopened" | "reordered" | "assigned" | "visibility_changed"
+  // | "shared" | "unshared" | "commented" | "edited"
+  action      String
+  detail      String    @default("")
+  createdAt   DateTime  @default(now())
+
+  @@index([checklistId, createdAt])
 }
 
 // Grants a specific user access to a private checklist.

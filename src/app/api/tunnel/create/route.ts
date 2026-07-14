@@ -1,0 +1,47 @@
+import { NextResponse } from 'next/server'
+import { execSync } from 'child_process'
+import { auth } from '@/lib/auth'
+
+const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+const TUNNEL_NAME = 'listsmanager'
+
+function run(cmd: string) {
+  return execSync(cmd, { encoding: 'utf8', timeout: 30000 })
+}
+
+function errOutput(e: unknown): string {
+  const err = e as NodeJS.ErrnoException & { stdout?: string; stderr?: string }
+  return err.stdout ?? err.stderr ?? err.message ?? String(e)
+}
+
+export async function POST() {
+  const session = await auth()
+  if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (session.user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  try {
+    const output = run(`cloudflared tunnel create ${TUNNEL_NAME} 2>&1`)
+    const match = output.match(UUID_RE)
+    if (!match) {
+      return NextResponse.json({ error: `Could not parse tunnel ID from: ${output}` }, { status: 500 })
+    }
+    return NextResponse.json({ tunnelId: match[0] })
+  } catch (createErr) {
+    const createMsg = errOutput(createErr)
+    if (createMsg.includes('already exist') || createMsg.includes('name is already used')) {
+      try {
+        const listOutput = run(`cloudflared tunnel list 2>&1`)
+        for (const line of listOutput.split('\n')) {
+          if (line.toLowerCase().includes(TUNNEL_NAME)) {
+            const match = line.match(UUID_RE)
+            if (match) return NextResponse.json({ tunnelId: match[0], reused: true })
+          }
+        }
+        return NextResponse.json({ error: `Tunnel exists but ID not found. List:\n${listOutput}` }, { status: 500 })
+      } catch (listErr) {
+        return NextResponse.json({ error: `Create and list both failed:\n${errOutput(listErr)}` }, { status: 500 })
+      }
+    }
+    return NextResponse.json({ error: createMsg }, { status: 500 })
+  }
+}

@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { checklistAccessWhere } from '@/lib/access'
 import { completeChecklist } from '@/lib/checklist-helpers'
+import { logActivity } from '@/lib/activity'
 
 const patchSchema = z.object({
   text: z.string().trim().min(1).max(500).optional(),
@@ -66,18 +67,24 @@ export async function PATCH(
   // unticking on a completed list reopens it.
   let checklistCompleted = false
   if (checked === true) {
+    logActivity(id, session.user.name, 'item_checked', updated.text)
     const remaining = await prisma.checklistItem.count({
       where: { checklistId: id, checked: false },
     })
     if (remaining === 0) {
       await completeChecklist(id)
       checklistCompleted = true
+      logActivity(id, session.user.name, 'completed')
     }
   } else if (checked === false) {
-    await prisma.checklist.updateMany({
+    logActivity(id, session.user.name, 'item_unchecked', updated.text)
+    const reopened = await prisma.checklist.updateMany({
       where: { id, status: 'completed' },
       data: { status: 'active', completedAt: null },
     })
+    if (reopened.count > 0) {
+      logActivity(id, session.user.name, 'reopened')
+    }
   }
 
   return NextResponse.json({ item: updated, checklistCompleted })
@@ -93,12 +100,17 @@ export async function DELETE(
   }
 
   const { id, itemId } = await params
-  await prisma.checklistItem.deleteMany({
+  const item = await prisma.checklistItem.findFirst({
     where: {
       id: itemId,
       checklistId: id,
       checklist: checklistAccessWhere(session.user.id, session.user.role),
     },
+    select: { id: true, text: true },
   })
+  if (item) {
+    await prisma.checklistItem.delete({ where: { id: item.id } }).catch(() => null)
+    logActivity(id, session.user.name, 'item_removed', item.text)
+  }
   return NextResponse.json({ ok: true })
 }

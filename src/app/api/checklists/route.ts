@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { RECURRENCE_OPTIONS } from '@/lib/recurrence'
 import { checklistAccessWhere } from '@/lib/access'
 import { createChecklistFromTemplate, getChecklistInclude } from '@/lib/checklist-helpers'
+import { logActivity } from '@/lib/activity'
 import { notify } from '@/lib/notifications'
 
 const PAGE_SIZE = 50
@@ -116,6 +117,7 @@ export async function POST(request: Request) {
     if (!checklist) {
       return NextResponse.json({ error: 'Template not found' }, { status: 404 })
     }
+    logActivity(checklist.id, session.user.name, 'created', 'from template')
     return NextResponse.json({ checklist }, { status: 201 })
   }
 
@@ -141,6 +143,8 @@ export async function POST(request: Request) {
     },
     include: getChecklistInclude(),
   })
+
+  logActivity(checklist.id, session.user.name, 'created')
 
   if (checklist.assignedToId && checklist.assignedToId !== session.user.id) {
     await notify(

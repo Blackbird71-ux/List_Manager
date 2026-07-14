@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth'
 import { RECURRENCE_OPTIONS } from '@/lib/recurrence'
 import { canAccessChecklist } from '@/lib/access'
 import { runChecklistAgain } from '@/lib/checklist-helpers'
+import { logActivity } from '@/lib/activity'
 
 const schema = z.object({
   dueDate: z.iso.datetime().nullish(),
@@ -37,6 +38,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!newId) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
+  logActivity(newId, session.user.name, 'created', 'run again')
 
   return NextResponse.json({ id: newId }, { status: 201 })
 }

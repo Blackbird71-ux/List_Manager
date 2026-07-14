@@ -91,7 +91,23 @@ export interface ApiChecklist {
   assignedTo: ApiUserRef | null
   createdBy: ApiUserRef
   template: { id: string; title: string } | null
+  templateVersion: number | null
   shares: { user: ApiUserRef }[]
+}
+
+export interface ApiComment {
+  id: string
+  body: string
+  createdAt: string
+  author: { id: string; name: string }
+}
+
+export interface ApiActivity {
+  id: string
+  actorName: string
+  action: string
+  detail: string
+  createdAt: string
 }
 
 export interface ApiNotification {

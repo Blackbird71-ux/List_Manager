@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { canAccessChecklist } from '@/lib/access'
 import { getChecklistInclude, resetChecklist } from '@/lib/checklist-helpers'
+import { logActivity } from '@/lib/activity'
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
@@ -19,6 +20,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   if (!ok) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
+  logActivity(id, session.user.name, 'reopened', 'reset all items')
 
   const checklist = await prisma.checklist.findUnique({
     where: { id },

@@ -8,6 +8,8 @@ import {
   Calendar,
   CheckCircle2,
   Download,
+  GripVertical,
+  History,
   Lock,
   MessageSquare,
   Paperclip,
@@ -18,7 +20,7 @@ import {
   User as UserIcon,
   Users as UsersIcon,
 } from 'lucide-react'
-import type { ApiChecklist, ApiChecklistItem, ApiUser } from '@/lib/types'
+import type { ApiActivity, ApiChecklist, ApiChecklistItem, ApiComment, ApiUser } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 export function ChecklistDetailClient({
@@ -36,6 +38,7 @@ export function ChecklistDetailClient({
   const [loading, setLoading] = useState(true)
   const [newItemText, setNewItemText] = useState('')
   const [justCompleted, setJustCompleted] = useState(false)
+  const [dragId, setDragId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const [clRes, uRes] = await Promise.all([
@@ -96,6 +99,29 @@ export function ChecklistDetailClient({
       setJustCompleted(false)
       setChecklist((await res.json()).checklist)
     }
+  }
+
+  function dragOverItem(e: React.DragEvent, overId: string) {
+    e.preventDefault()
+    if (!dragId || dragId === overId || !checklist) return
+    const items = [...checklist.items]
+    const from = items.findIndex((i) => i.id === dragId)
+    const to = items.findIndex((i) => i.id === overId)
+    if (from < 0 || to < 0) return
+    const [moved] = items.splice(from, 1)
+    items.splice(to, 0, moved)
+    setChecklist({ ...checklist, items })
+  }
+
+  async function dropItem() {
+    if (!dragId || !checklist) return
+    setDragId(null)
+    const res = await fetch(`/api/checklists/${checklistId}/items/reorder`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ itemIds: checklist.items.map((i) => i.id) }),
+    })
+    if (!res.ok) load() // restore server order if the reorder was rejected
   }
 
   async function removeChecklist() {
@@ -177,7 +203,12 @@ export function ChecklistDetailClient({
                   <RefreshCw className="h-3 w-3" /> repeats {checklist.recurrence}
                 </span>
               )}
-              {checklist.template && <span>from “{checklist.template.title}”</span>}
+              {checklist.template && (
+                <span>
+                  from “{checklist.template.title}”
+                  {checklist.templateVersion != null && ` · v${checklist.templateVersion}`}
+                </span>
+              )}
               <span>created by {checklist.createdBy.name}</span>
             </div>
           </div>
@@ -341,6 +372,10 @@ export function ChecklistDetailClient({
             users={users}
             onToggle={() => toggleItem(item)}
             onChanged={load}
+            dragging={dragId === item.id}
+            onDragStart={() => setDragId(item.id)}
+            onDragOver={(e) => dragOverItem(e, item.id)}
+            onDragEnd={dropItem}
           />
         ))}
 
@@ -360,6 +395,150 @@ export function ChecklistDetailClient({
           </button>
         </form>
       </div>
+
+      <CommentsActivityPanel checklistId={checklistId} />
+    </div>
+  )
+}
+
+const ACTION_LABELS: Record<string, string> = {
+  created: 'created this checklist',
+  item_checked: 'checked off',
+  item_unchecked: 'unchecked',
+  item_added: 'added item',
+  item_removed: 'removed item',
+  completed: 'completed the checklist',
+  reopened: 'reopened the checklist',
+  reordered: 'reordered the items',
+  assigned: 'changed the assignee',
+  visibility_changed: 'changed visibility',
+  shared: 'updated sharing',
+  unshared: 'removed sharing',
+  commented: 'left a comment',
+  edited: 'edited the details',
+}
+
+function CommentsActivityPanel({ checklistId }: { checklistId: string }) {
+  const [tab, setTab] = useState<'comments' | 'activity'>('comments')
+  const [comments, setComments] = useState<ApiComment[]>([])
+  const [activities, setActivities] = useState<ApiActivity[]>([])
+  const [draft, setDraft] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const loadComments = useCallback(async () => {
+    const res = await fetch(`/api/checklists/${checklistId}/comments`)
+    if (res.ok) setComments((await res.json()).comments)
+  }, [checklistId])
+
+  const loadActivity = useCallback(async () => {
+    const res = await fetch(`/api/checklists/${checklistId}/activity`)
+    if (res.ok) setActivities((await res.json()).activities)
+  }, [checklistId])
+
+  useEffect(() => {
+    loadComments()
+  }, [loadComments])
+
+  useEffect(() => {
+    if (tab === 'activity') loadActivity()
+  }, [tab, loadActivity])
+
+  async function postComment(e: React.FormEvent) {
+    e.preventDefault()
+    const body = draft.trim()
+    if (!body) return
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/checklists/${checklistId}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body }),
+      })
+      if (res.ok) {
+        setDraft('')
+        loadComments()
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-border bg-panel">
+      <div className="flex gap-1 border-b border-border-soft px-3 pt-2">
+        <button
+          onClick={() => setTab('comments')}
+          className={cn(
+            'flex items-center gap-1.5 rounded-t-lg px-3 py-2 text-sm font-medium',
+            tab === 'comments' ? 'text-accent' : 'text-muted hover:text-ink'
+          )}
+        >
+          <MessageSquare className="h-4 w-4" />
+          Comments{comments.length > 0 && ` (${comments.length})`}
+        </button>
+        <button
+          onClick={() => setTab('activity')}
+          className={cn(
+            'flex items-center gap-1.5 rounded-t-lg px-3 py-2 text-sm font-medium',
+            tab === 'activity' ? 'text-accent' : 'text-muted hover:text-ink'
+          )}
+        >
+          <History className="h-4 w-4" /> Activity
+        </button>
+      </div>
+
+      {tab === 'comments' ? (
+        <div className="space-y-3 px-4 py-4">
+          {comments.length === 0 && (
+            <p className="text-sm text-faint">No comments yet — start the conversation.</p>
+          )}
+          {comments.map((c) => (
+            <div key={c.id} className="text-sm">
+              <p className="text-xs text-faint">
+                <span className="font-medium text-muted">{c.author.name}</span> ·{' '}
+                {new Date(c.createdAt).toLocaleString()}
+              </p>
+              <p className="mt-0.5 whitespace-pre-wrap">{c.body}</p>
+            </div>
+          ))}
+          <form onSubmit={postComment} className="flex gap-2 pt-1">
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="Write a comment…"
+              rows={2}
+              maxLength={2000}
+              className="flex-1 rounded-lg border border-border bg-field px-3 py-2 text-sm focus:border-accent focus:outline-none"
+            />
+            <button
+              type="submit"
+              disabled={busy || !draft.trim()}
+              className="self-end rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-ink hover:bg-accent-2 disabled:opacity-50"
+            >
+              Post
+            </button>
+          </form>
+        </div>
+      ) : (
+        <div className="px-4 py-4">
+          {activities.length === 0 ? (
+            <p className="text-sm text-faint">No activity recorded yet.</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {activities.map((a) => (
+                <li key={a.id} className="flex flex-wrap items-baseline gap-x-1.5 text-sm">
+                  <span className="font-medium">{a.actorName}</span>
+                  <span className="text-muted">{ACTION_LABELS[a.action] ?? a.action}</span>
+                  {a.detail && <span className="text-muted">“{a.detail}”</span>}
+                  <span className="ml-auto text-xs text-faint">
+                    {new Date(a.createdAt).toLocaleString()}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -567,16 +746,26 @@ function ItemRow({
   users,
   onToggle,
   onChanged,
+  dragging,
+  onDragStart,
+  onDragOver,
+  onDragEnd,
 }: {
   checklistId: string
   item: ApiChecklistItem
   users: ApiUser[]
   onToggle: () => void
   onChanged: () => void
+  dragging: boolean
+  onDragStart: () => void
+  onDragOver: (e: React.DragEvent) => void
+  onDragEnd: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const [notes, setNotes] = useState(item.notes)
   const [uploading, setUploading] = useState(false)
+  // Only arm dragging from the grip so text selection and inputs keep working.
+  const [armed, setArmed] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   async function patchItem(data: Record<string, unknown>) {
@@ -622,8 +811,27 @@ function ItemRow({
   const hasExtras = item.notes || item.attachments.length > 0 || item.assignedTo
 
   return (
-    <div className="rounded-xl border border-border bg-panel">
+    <div
+      draggable={armed}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragEnd={() => {
+        setArmed(false)
+        onDragEnd()
+      }}
+      className={cn('rounded-xl border border-border bg-panel', dragging && 'opacity-50')}
+    >
       <div className="flex items-center gap-3 px-4 py-3">
+        <span
+          onMouseDown={() => setArmed(true)}
+          onMouseUp={() => setArmed(false)}
+          onTouchStart={() => setArmed(true)}
+          onTouchEnd={() => setArmed(false)}
+          className="-ml-1 shrink-0 cursor-grab touch-none text-faint hover:text-muted active:cursor-grabbing"
+          title="Drag to reorder"
+        >
+          <GripVertical className="h-4 w-4" />
+        </span>
         <input
           type="checkbox"
           checked={item.checked}

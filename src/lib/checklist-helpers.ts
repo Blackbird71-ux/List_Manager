@@ -56,6 +56,7 @@ export async function createChecklistFromTemplate(params: {
       visibility: params.visibility === 'private' ? 'private' : 'team',
       dueDate: params.dueDate ?? null,
       templateId: template.id,
+      templateVersion: template.version,
       createdById: params.createdById,
       assignedToId: params.assignedToId ?? null,
       items: {
@@ -99,6 +100,7 @@ interface CloneSource {
   recurrence: string
   visibility: string
   templateId: string | null
+  templateVersion: number | null
   createdById: string
   assignedToId: string | null
   items: { text: string; priority: string | null; assignedToId: string | null }[]
@@ -125,6 +127,8 @@ async function cloneForNextRun(
       visibility: source.visibility,
       dueDate,
       templateId: source.templateId,
+      // The clone copies the source's items, so it ran from the same version.
+      templateVersion: source.templateVersion,
       createdById: source.createdById,
       assignedToId: source.assignedToId,
       items: {

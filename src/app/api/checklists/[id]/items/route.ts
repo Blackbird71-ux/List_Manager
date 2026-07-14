@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { checklistAccessWhere } from '@/lib/access'
+import { logActivity } from '@/lib/activity'
 
 const createSchema = z.object({
   text: z.string().trim().min(1).max(500),
@@ -52,5 +53,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       },
     },
   })
+  logActivity(id, session.user.name, 'item_added', parsed.data.text)
   return NextResponse.json({ item }, { status: 201 })
 }

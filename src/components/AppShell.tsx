@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
 import {
+  BarChart3,
   CheckCircle2,
   ClipboardList,
   LayoutTemplate,
@@ -12,6 +13,7 @@ import {
   Settings,
   Users,
 } from 'lucide-react'
+import { HelpMenu } from '@/components/HelpMenu'
 import { NotificationsBell } from '@/components/NotificationsBell'
 import { cn } from '@/lib/utils'
 
@@ -27,6 +29,9 @@ export function AppShell({ user, children }: AppShellProps) {
     { href: '/', label: 'Checklists', icon: ListChecks },
     { href: '/completed', label: 'Completed', icon: CheckCircle2 },
     { href: '/templates', label: 'Templates', icon: LayoutTemplate },
+    ...(user.role === 'admin' || user.role === 'manager'
+      ? [{ href: '/reports', label: 'Reports', icon: BarChart3 }]
+      : []),
     ...(user.role === 'admin' ? [{ href: '/admin/users', label: 'Users', icon: Users }] : []),
   ]
 
@@ -58,6 +63,7 @@ export function AppShell({ user, children }: AppShellProps) {
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
+            <HelpMenu />
             <NotificationsBell />
             <Link
               href="/settings"
