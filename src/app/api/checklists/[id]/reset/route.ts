@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { canAccessChecklist } from '@/lib/access'
 import { getChecklistInclude, resetChecklist } from '@/lib/checklist-helpers'
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -10,6 +11,10 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   }
 
   const { id } = await params
+  const allowed = await canAccessChecklist(id, session.user.id, session.user.role)
+  if (!allowed) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
   const ok = await resetChecklist(id)
   if (!ok) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })

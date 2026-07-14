@@ -6,8 +6,9 @@ import { prisma } from '@/lib/prisma'
 
 const patchSchema = z.object({
   name: z.string().trim().min(1).max(100).optional(),
-  role: z.enum(['admin', 'member']).optional(),
+  role: z.enum(['admin', 'manager', 'member']).optional(),
   password: z.string().min(8).max(200).optional(),
+  currentPassword: z.string().min(1).max(200).optional(),
 })
 
 // Admin: edit any user (name, role, password reset).
@@ -34,8 +35,21 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
+  // Changing your own password requires proving you know the current one
+  // (an admin resetting someone else's password does not).
+  if (parsed.data.password !== undefined && isSelf) {
+    const me = await prisma.user.findUnique({ where: { id }, select: { password: true } })
+    const ok =
+      me && parsed.data.currentPassword
+        ? await bcrypt.compare(parsed.data.currentPassword, me.password)
+        : false
+    if (!ok) {
+      return NextResponse.json({ error: 'Current password is incorrect' }, { status: 400 })
+    }
+  }
+
   // Don't let the last admin demote themselves and lock everyone out.
-  if (parsed.data.role === 'member') {
+  if (parsed.data.role !== undefined && parsed.data.role !== 'admin') {
     const adminCount = await prisma.user.count({ where: { role: 'admin' } })
     const target = await prisma.user.findUnique({ where: { id }, select: { role: true } })
     if (target?.role === 'admin' && adminCount <= 1) {

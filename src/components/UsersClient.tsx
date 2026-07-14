@@ -63,7 +63,7 @@ export function UsersClient({ currentUserId }: { currentUserId: string }) {
   }
 
   if (loading) {
-    return <p className="py-12 text-center text-sm text-slate-400">Loading…</p>
+    return <p className="py-12 text-center text-sm text-faint">Loading…</p>
   }
 
   return (
@@ -72,40 +72,41 @@ export function UsersClient({ currentUserId }: { currentUserId: string }) {
         <h1 className="text-lg font-semibold">Users</h1>
         <button
           onClick={() => setShowCreate(true)}
-          className="ml-auto flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+          className="ml-auto flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-accent-ink hover:bg-accent-2"
         >
           <Plus className="h-4 w-4" /> Add user
         </button>
       </div>
 
-      {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+      {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="overflow-hidden rounded-xl border border-border bg-panel">
         {users.map((u) => (
           <div
             key={u.id}
-            className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0"
+            className="flex flex-wrap items-center gap-3 border-b border-border-soft px-4 py-3 last:border-b-0"
           >
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium">
                 {u.name}
                 {u.id === currentUserId && (
-                  <span className="ml-2 text-xs font-normal text-slate-400">(you)</span>
+                  <span className="ml-2 text-xs font-normal text-faint">(you)</span>
                 )}
               </p>
-              <p className="text-xs text-slate-500">{u.email}</p>
+              <p className="text-xs text-muted">{u.email}</p>
             </div>
             <select
               value={u.role}
               onChange={(e) => setRole(u, e.target.value)}
-              className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+              className="rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
             >
               <option value="member">Member</option>
+              <option value="manager">Manager</option>
               <option value="admin">Admin</option>
             </select>
             <button
               onClick={() => resetPassword(u)}
-              className="rounded p-2 text-slate-500 hover:bg-slate-100"
+              className="rounded p-2 text-muted hover:bg-hover"
               title="Reset password"
             >
               <KeyRound className="h-4 w-4" />
@@ -113,7 +114,7 @@ export function UsersClient({ currentUserId }: { currentUserId: string }) {
             <button
               onClick={() => remove(u)}
               disabled={u.id === currentUserId}
-              className="rounded p-2 text-red-400 hover:bg-red-50 disabled:opacity-30"
+              className="rounded p-2 text-danger/50 hover:bg-danger-soft hover:text-danger disabled:opacity-30"
               title="Delete user"
             >
               <Trash2 className="h-4 w-4" />
@@ -166,7 +167,7 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-      <form onSubmit={submit} className="w-full max-w-sm space-y-3 rounded-2xl bg-white p-5 shadow-xl">
+      <form onSubmit={submit} className="w-full max-w-sm space-y-3 rounded-2xl border border-border bg-panel p-5 shadow-xl">
         <h2 className="text-lg font-semibold">Add user</h2>
         <div>
           <label className="mb-1 block text-sm font-medium">Name</label>
@@ -174,7 +175,7 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm"
           />
         </div>
         <div>
@@ -184,7 +185,7 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm"
           />
         </div>
         <div>
@@ -195,7 +196,7 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
             onChange={(e) => setPassword(e.target.value)}
             required
             minLength={8}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm"
           />
         </div>
         <div>
@@ -203,27 +204,28 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
           <select
             value={role}
             onChange={(e) => setRole(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm"
           >
             <option value="member">Member</option>
+            <option value="manager">Manager</option>
             <option value="admin">Admin</option>
           </select>
         </div>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-danger">{error}</p>}
 
         <div className="flex justify-end gap-2 pt-1">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+            className="rounded-lg px-3 py-2 text-sm font-medium text-muted hover:bg-hover"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={busy}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-ink hover:bg-accent-2 disabled:opacity-50"
           >
             {busy ? 'Creating…' : 'Create user'}
           </button>

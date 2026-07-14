@@ -3,8 +3,11 @@ import { z } from 'zod'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { RECURRENCE_OPTIONS } from '@/lib/recurrence'
+import { checklistAccessWhere } from '@/lib/access'
 import { createChecklistFromTemplate, getChecklistInclude } from '@/lib/checklist-helpers'
 import { notify } from '@/lib/notifications'
+
+const PAGE_SIZE = 50
 
 export async function GET(request: Request) {
   const session = await auth()
@@ -17,18 +20,49 @@ export async function GET(request: Request) {
   const category = searchParams.get('category')
   const assignedToId = searchParams.get('assignedTo')
   const search = searchParams.get('q')?.trim()
+  const visibility = searchParams.get('visibility')
+  // Any checklist a given user is involved in (created, assigned list or item).
+  const userId = searchParams.get('user')
+  const page = Math.max(1, Number(searchParams.get('page')) || 1)
+  const paginated = searchParams.has('page')
 
-  const checklists = await prisma.checklist.findMany({
-    where: {
-      ...(status ? { status } : {}),
-      ...(category ? { category } : {}),
-      ...(assignedToId ? { assignedToId } : {}),
-      ...(search ? { title: { contains: search } } : {}),
-    },
-    include: getChecklistInclude(),
-    orderBy: [{ status: 'asc' }, { dueDate: 'asc' }, { createdAt: 'desc' }],
-  })
-  return NextResponse.json({ checklists })
+  const where = {
+    AND: [
+      checklistAccessWhere(session.user.id, session.user.role),
+      {
+        ...(status ? { status } : {}),
+        ...(category ? { category } : {}),
+        ...(assignedToId ? { assignedToId } : {}),
+        ...(search ? { title: { contains: search } } : {}),
+        ...(visibility ? { visibility } : {}),
+        ...(userId
+          ? {
+              OR: [
+                { createdById: userId },
+                { assignedToId: userId },
+                { items: { some: { assignedToId: userId } } },
+              ],
+            }
+          : {}),
+      },
+    ],
+  }
+
+  const orderBy =
+    status === 'completed'
+      ? [{ completedAt: 'desc' as const }]
+      : [{ status: 'asc' as const }, { dueDate: 'asc' as const }, { createdAt: 'desc' as const }]
+
+  const [checklists, total] = await Promise.all([
+    prisma.checklist.findMany({
+      where,
+      include: getChecklistInclude(),
+      orderBy,
+      ...(paginated ? { skip: (page - 1) * PAGE_SIZE, take: PAGE_SIZE } : {}),
+    }),
+    prisma.checklist.count({ where }),
+  ])
+  return NextResponse.json({ checklists, total, page, pageSize: PAGE_SIZE })
 }
 
 const fromTemplateSchema = z.object({
@@ -37,6 +71,7 @@ const fromTemplateSchema = z.object({
   dueDate: z.iso.datetime().nullish(),
   assignedToId: z.string().nullish(),
   priority: z.enum(['low', 'medium', 'high']).optional(),
+  visibility: z.enum(['team', 'private']).optional(),
 })
 
 const adHocSchema = z.object({
@@ -46,6 +81,7 @@ const adHocSchema = z.object({
   category: z.string().trim().max(100).default('general'),
   recurrence: z.enum(RECURRENCE_OPTIONS).default('none'),
   priority: z.enum(['low', 'medium', 'high']).default('medium'),
+  visibility: z.enum(['team', 'private']).default('team'),
   dueDate: z.iso.datetime().nullish(),
   assignedToId: z.string().nullish(),
   items: z.array(z.object({ text: z.string().trim().min(1).max(500) })).default([]),
@@ -75,6 +111,7 @@ export async function POST(request: Request) {
       dueDate: parsed.data.dueDate ? new Date(parsed.data.dueDate) : null,
       assignedToId: parsed.data.assignedToId ?? null,
       priority: parsed.data.priority,
+      visibility: parsed.data.visibility,
     })
     if (!checklist) {
       return NextResponse.json({ error: 'Template not found' }, { status: 404 })
@@ -94,6 +131,7 @@ export async function POST(request: Request) {
       category: data.category || 'general',
       recurrence: data.recurrence,
       priority: data.priority,
+      visibility: data.visibility,
       dueDate: data.dueDate ? new Date(data.dueDate) : null,
       createdById: session.user.id,
       assignedToId: data.assignedToId ?? null,

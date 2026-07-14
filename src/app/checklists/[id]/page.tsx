@@ -10,7 +10,11 @@ export default async function ChecklistPage({ params }: { params: Promise<{ id: 
   const { id } = await params
   return (
     <AppShell user={{ name: session.user.name, role: session.user.role }}>
-      <ChecklistDetailClient checklistId={id} />
+      <ChecklistDetailClient
+        checklistId={id}
+        currentUserId={session.user.id}
+        currentUserRole={session.user.role}
+      />
     </AppShell>
   )
 }

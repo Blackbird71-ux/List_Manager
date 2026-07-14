@@ -55,14 +55,14 @@ export function TemplatesClient() {
   const visible = templates.filter((t) => (showArchived ? true : !t.archived))
 
   if (loading) {
-    return <p className="py-12 text-center text-sm text-slate-400">Loading…</p>
+    return <p className="py-12 text-center text-sm text-faint">Loading…</p>
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
         <h1 className="text-lg font-semibold">Templates</h1>
-        <label className="ml-2 flex items-center gap-1.5 text-sm text-slate-500">
+        <label className="ml-2 flex items-center gap-1.5 text-sm text-muted">
           <input
             type="checkbox"
             checked={showArchived}
@@ -72,14 +72,14 @@ export function TemplatesClient() {
         </label>
         <button
           onClick={() => setEditing('new')}
-          className="ml-auto flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+          className="ml-auto flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-accent-ink hover:bg-accent-2"
         >
           <Plus className="h-4 w-4" /> New template
         </button>
       </div>
 
       {visible.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-300 py-16 text-center text-sm text-slate-400">
+        <div className="rounded-xl border border-dashed border-border py-16 text-center text-sm text-faint">
           No templates yet. Create one to get started.
         </div>
       ) : (
@@ -88,7 +88,7 @@ export function TemplatesClient() {
             <div
               key={t.id}
               className={cn(
-                'rounded-xl border border-slate-200 bg-white p-4',
+                'rounded-xl border border-border bg-panel p-4',
                 t.archived && 'opacity-60'
               )}
             >
@@ -97,14 +97,14 @@ export function TemplatesClient() {
                 <div className="flex shrink-0 gap-1">
                   <button
                     onClick={() => setEditing(t)}
-                    className="rounded p-1.5 text-slate-500 hover:bg-slate-100"
+                    className="rounded p-1.5 text-muted hover:bg-hover"
                     title="Edit"
                   >
                     <Pencil className="h-4 w-4" />
                   </button>
                   <button
                     onClick={() => toggleArchive(t)}
-                    className="rounded p-1.5 text-slate-500 hover:bg-slate-100"
+                    className="rounded p-1.5 text-muted hover:bg-hover"
                     title={t.archived ? 'Restore' : 'Archive'}
                   >
                     {t.archived ? (
@@ -115,7 +115,7 @@ export function TemplatesClient() {
                   </button>
                   <button
                     onClick={() => remove(t)}
-                    className="rounded p-1.5 text-red-400 hover:bg-red-50"
+                    className="rounded p-1.5 text-danger/50 hover:bg-danger-soft hover:text-danger"
                     title="Delete"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -123,12 +123,12 @@ export function TemplatesClient() {
                 </div>
               </div>
 
-              {t.description && <p className="mt-1 text-sm text-slate-500">{t.description}</p>}
+              {t.description && <p className="mt-1 text-sm text-muted">{t.description}</p>}
 
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-                <span className="rounded bg-slate-100 px-1.5 py-0.5">{t.category}</span>
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+                <span className="rounded bg-hover px-1.5 py-0.5">{t.category}</span>
                 {t.recurrence !== 'none' && (
-                  <span className="flex items-center gap-1 text-blue-600">
+                  <span className="flex items-center gap-1 text-accent">
                     <RefreshCw className="h-3 w-3" /> {t.recurrence}
                   </span>
                 )}
@@ -140,7 +140,7 @@ export function TemplatesClient() {
               {!t.archived && (
                 <button
                   onClick={() => setStarting(t)}
-                  className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                  className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-accent-ink hover:bg-accent-2"
                 >
                   <Play className="h-4 w-4" /> Start checklist
                 </button>
@@ -177,6 +177,7 @@ function StartChecklistModal({
   const [users, setUsers] = useState<ApiUser[]>([])
   const [dueDate, setDueDate] = useState('')
   const [assignedToId, setAssignedToId] = useState('')
+  const [visibility, setVisibility] = useState('team')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -198,6 +199,7 @@ function StartChecklistModal({
           templateId: template.id,
           dueDate: dueDate ? new Date(`${dueDate}T00:00:00`).toISOString() : null,
           assignedToId: assignedToId || null,
+          visibility,
         }),
       })
       if (!res.ok) {
@@ -214,10 +216,10 @@ function StartChecklistModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-      <form onSubmit={submit} className="w-full max-w-sm space-y-3 rounded-2xl bg-white p-5 shadow-xl">
+      <form onSubmit={submit} className="w-full max-w-sm space-y-3 rounded-2xl border border-border bg-panel p-5 shadow-xl">
         <h2 className="text-lg font-semibold">Start “{template.title}”</h2>
         {template.recurrence !== 'none' && (
-          <p className="flex items-center gap-1 text-xs text-blue-600">
+          <p className="flex items-center gap-1 text-xs text-accent">
             <RefreshCw className="h-3 w-3" /> Repeats {template.recurrence} — completing it creates
             the next one automatically.
           </p>
@@ -228,7 +230,7 @@ function StartChecklistModal({
             type="date"
             value={dueDate}
             onChange={(e) => setDueDate(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm"
           />
         </div>
         <div>
@@ -236,7 +238,7 @@ function StartChecklistModal({
           <select
             value={assignedToId}
             onChange={(e) => setAssignedToId(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm"
           >
             <option value="">Unassigned</option>
             {users.map((u) => (
@@ -246,21 +248,32 @@ function StartChecklistModal({
             ))}
           </select>
         </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium">Visibility</label>
+          <select
+            value={visibility}
+            onChange={(e) => setVisibility(e.target.value)}
+            className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm"
+          >
+            <option value="team">Team — everyone</option>
+            <option value="private">Private — only me + shared</option>
+          </select>
+        </div>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-danger">{error}</p>}
 
         <div className="flex justify-end gap-2 pt-1">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+            className="rounded-lg px-3 py-2 text-sm font-medium text-muted hover:bg-hover"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={busy}
-            className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-ink hover:bg-accent-2 disabled:opacity-50"
           >
             <Play className="h-4 w-4" /> {busy ? 'Starting…' : 'Start checklist'}
           </button>
@@ -344,7 +357,7 @@ function TemplateEditor({
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/30 p-4">
       <form
         onSubmit={submit}
-        className="my-8 w-full max-w-2xl space-y-4 rounded-2xl bg-white p-5 shadow-xl"
+        className="my-8 w-full max-w-2xl space-y-4 rounded-2xl border border-border bg-panel p-5 shadow-xl"
       >
         <h2 className="text-lg font-semibold">{template ? 'Edit template' : 'New template'}</h2>
 
@@ -355,7 +368,7 @@ function TemplateEditor({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               required
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm"
             />
           </div>
           <div className="sm:col-span-2">
@@ -364,7 +377,7 @@ function TemplateEditor({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={2}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm"
             />
           </div>
           <div>
@@ -372,7 +385,7 @@ function TemplateEditor({
             <input
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm"
             />
           </div>
           <div>
@@ -380,7 +393,7 @@ function TemplateEditor({
             <select
               value={recurrence}
               onChange={(e) => setRecurrence(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm"
             >
               {RECURRENCES.map((r) => (
                 <option key={r} value={r}>
@@ -389,7 +402,7 @@ function TemplateEditor({
               ))}
             </select>
             {recurrence !== 'none' && (
-              <p className="mt-1 text-xs text-slate-400">
+              <p className="mt-1 text-xs text-faint">
                 Completing a checklist made from this template automatically creates the next one.
               </p>
             )}
@@ -408,7 +421,7 @@ function TemplateEditor({
                     setItems(items.map((it, i) => (i === idx ? { ...it, text: e.target.value } : it)))
                   }
                   placeholder={`Item ${idx + 1}`}
-                  className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  className="flex-1 rounded-lg border border-border bg-field px-3 py-2 text-sm"
                 />
                 <select
                   value={item.priority}
@@ -417,7 +430,7 @@ function TemplateEditor({
                       items.map((it, i) => (i === idx ? { ...it, priority: e.target.value } : it))
                     )
                   }
-                  className="w-28 rounded-lg border border-slate-300 px-2 py-2 text-sm"
+                  className="w-28 rounded-lg border border-border bg-field px-2 py-2 text-sm"
                 >
                   <option value="">No priority</option>
                   <option value="low">Low</option>
@@ -427,7 +440,7 @@ function TemplateEditor({
                 <button
                   type="button"
                   onClick={() => setItems(items.filter((_, i) => i !== idx))}
-                  className="rounded p-2 text-red-400 hover:bg-red-50"
+                  className="rounded p-2 text-danger/50 hover:bg-danger-soft hover:text-danger"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -437,7 +450,7 @@ function TemplateEditor({
           <button
             type="button"
             onClick={() => setItems([...items, { text: '', priority: '' }])}
-            className="mt-2 flex items-center gap-1 text-sm text-blue-600 hover:underline"
+            className="mt-2 flex items-center gap-1 text-sm text-accent hover:underline"
           >
             <Plus className="h-4 w-4" /> Add item
           </button>
@@ -447,7 +460,7 @@ function TemplateEditor({
         <div>
           <label className="mb-1 block text-sm font-medium">
             Custom fields{' '}
-            <span className="font-normal text-slate-400">
+            <span className="font-normal text-faint">
               (filled in on each checklist, e.g. Site, Inspector)
             </span>
           </label>
@@ -460,14 +473,14 @@ function TemplateEditor({
                     setFields(fields.map((x, i) => (i === idx ? { ...x, name: e.target.value } : x)))
                   }
                   placeholder="Field name"
-                  className="w-40 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  className="w-40 rounded-lg border border-border bg-field px-3 py-2 text-sm"
                 />
                 <select
                   value={f.type}
                   onChange={(e) =>
                     setFields(fields.map((x, i) => (i === idx ? { ...x, type: e.target.value } : x)))
                   }
-                  className="rounded-lg border border-slate-300 px-2 py-2 text-sm"
+                  className="rounded-lg border border-border bg-field px-2 py-2 text-sm"
                 >
                   <option value="text">Text</option>
                   <option value="dropdown">Dropdown</option>
@@ -482,13 +495,13 @@ function TemplateEditor({
                       )
                     }
                     placeholder="Options, comma separated"
-                    className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    className="flex-1 rounded-lg border border-border bg-field px-3 py-2 text-sm"
                   />
                 )}
                 <button
                   type="button"
                   onClick={() => setFields(fields.filter((_, i) => i !== idx))}
-                  className="rounded p-2 text-red-400 hover:bg-red-50"
+                  className="rounded p-2 text-danger/50 hover:bg-danger-soft hover:text-danger"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -498,26 +511,26 @@ function TemplateEditor({
           <button
             type="button"
             onClick={() => setFields([...fields, { name: '', type: 'text', options: '', required: true }])}
-            className="mt-2 flex items-center gap-1 text-sm text-blue-600 hover:underline"
+            className="mt-2 flex items-center gap-1 text-sm text-accent hover:underline"
           >
             <Plus className="h-4 w-4" /> Add field
           </button>
         </div>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-danger">{error}</p>}
 
         <div className="flex justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+            className="rounded-lg px-3 py-2 text-sm font-medium text-muted hover:bg-hover"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={busy}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-ink hover:bg-accent-2 disabled:opacity-50"
           >
             {busy ? 'Saving…' : 'Save template'}
           </button>

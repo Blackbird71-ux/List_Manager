@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { checklistAccessWhere } from '@/lib/access'
 import { completeChecklist } from '@/lib/checklist-helpers'
 
 const patchSchema = z.object({
@@ -29,7 +30,11 @@ export async function PATCH(
   }
 
   const item = await prisma.checklistItem.findFirst({
-    where: { id: itemId, checklistId: id },
+    where: {
+      id: itemId,
+      checklistId: id,
+      checklist: checklistAccessWhere(session.user.id, session.user.role),
+    },
     select: { id: true, checked: true },
   })
   if (!item) {
@@ -88,6 +93,12 @@ export async function DELETE(
   }
 
   const { id, itemId } = await params
-  await prisma.checklistItem.deleteMany({ where: { id: itemId, checklistId: id } })
+  await prisma.checklistItem.deleteMany({
+    where: {
+      id: itemId,
+      checklistId: id,
+      checklist: checklistAccessWhere(session.user.id, session.user.role),
+    },
+  })
   return NextResponse.json({ ok: true })
 }

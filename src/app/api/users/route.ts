@@ -22,7 +22,7 @@ const createSchema = z.object({
   name: z.string().trim().min(1).max(100),
   email: z.string().trim().toLowerCase().email().max(200),
   password: z.string().min(8).max(200),
-  role: z.enum(['admin', 'member']).default('member'),
+  role: z.enum(['admin', 'manager', 'member']).default('member'),
 })
 
 // Admin only: create an account for a colleague.

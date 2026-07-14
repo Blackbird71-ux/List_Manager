@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { auth } from '@/lib/auth'
 import { RECURRENCE_OPTIONS } from '@/lib/recurrence'
+import { canAccessChecklist } from '@/lib/access'
 import { runChecklistAgain } from '@/lib/checklist-helpers'
 
 const schema = z.object({
@@ -20,6 +21,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const parsed = schema.safeParse(body ?? {})
   if (!parsed.success) {
     return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
+  }
+
+  const allowed = await canAccessChecklist(id, session.user.id, session.user.role)
+  if (!allowed) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
   const newId = await runChecklistAgain({

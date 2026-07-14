@@ -14,7 +14,7 @@ model User {
   email     String   @unique
   name      String
   password  String // bcrypt hash
-  role      String   @default("member") // "admin" | "member"
+  role      String   @default("member") // "admin" | "manager" | "member"
   createdAt DateTime @default(now())
 
   createdTemplates  Template[]      @relation("TemplateCreator")
@@ -23,6 +23,7 @@ model User {
   assignedItems     ChecklistItem[] @relation("ItemAssignee")
   notifications     Notification[]
   attachments       Attachment[]
+  checklistShares   ChecklistShare[]
 }
 
 // A reusable master template. Copying it into a Checklist never mutates it.
@@ -71,6 +72,9 @@ model Checklist {
   description String    @default("")
   category    String    @default("general")
   status      String    @default("active") // "active" | "completed"
+  // "team": every signed-in user can see and work on it.
+  // "private": creator, assignees, shared users, managers and admins only.
+  visibility  String    @default("team")
   priority    String    @default("medium") // "low" | "medium" | "high"
   // Copied from the template at creation so ad-hoc lists can also recur.
   recurrence  String    @default("none")
@@ -94,6 +98,19 @@ model Checklist {
 
   items       ChecklistItem[]
   fieldValues CustomFieldValue[]
+  shares      ChecklistShare[]
+}
+
+// Grants a specific user access to a private checklist.
+model ChecklistShare {
+  id          String    @id @default(cuid())
+  checklistId String
+  checklist   Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@unique([checklistId, userId])
 }
 
 model ChecklistItem {

@@ -6,6 +6,7 @@ import {
   Calendar,
   CheckCircle2,
   ClipboardList,
+  Lock,
   Plus,
   RefreshCw,
   Search,
@@ -15,18 +16,19 @@ import type { ApiChecklist, ApiTemplate, ApiUser } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 const PRIORITY_STYLES: Record<string, string> = {
-  high: 'bg-red-100 text-red-700',
-  medium: 'bg-amber-100 text-amber-700',
-  low: 'bg-slate-100 text-slate-600',
+  high: 'bg-danger-soft text-danger',
+  medium: 'bg-warn-soft text-warn',
+  low: 'bg-hover text-muted',
 }
 
 export function DashboardClient({ currentUserId }: { currentUserId: string }) {
   const [checklists, setChecklists] = useState<ApiChecklist[]>([])
+  const [completedTotal, setCompletedTotal] = useState(0)
   const [templates, setTemplates] = useState<ApiTemplate[]>([])
   const [users, setUsers] = useState<ApiUser[]>([])
   const [loading, setLoading] = useState(true)
 
-  const [statusFilter, setStatusFilter] = useState<'active' | 'completed' | 'all'>('active')
+  const [scopeFilter, setScopeFilter] = useState<'all' | 'mine' | 'private'>('all')
   const [categoryFilter, setCategoryFilter] = useState('')
   const [assigneeFilter, setAssigneeFilter] = useState('')
   const [search, setSearch] = useState('')
@@ -34,12 +36,14 @@ export function DashboardClient({ currentUserId }: { currentUserId: string }) {
 
   const load = useCallback(async () => {
     try {
-      const [clRes, tRes, uRes] = await Promise.all([
-        fetch('/api/checklists'),
+      const [clRes, doneRes, tRes, uRes] = await Promise.all([
+        fetch('/api/checklists?status=active'),
+        fetch('/api/checklists?status=completed&page=1'),
         fetch('/api/templates'),
         fetch('/api/users'),
       ])
       if (clRes.ok) setChecklists((await clRes.json()).checklists)
+      if (doneRes.ok) setCompletedTotal((await doneRes.json()).total ?? 0)
       if (tRes.ok) setTemplates((await tRes.json()).templates)
       if (uRes.ok) setUsers((await uRes.json()).users)
     } finally {
@@ -58,7 +62,14 @@ export function DashboardClient({ currentUserId }: { currentUserId: string }) {
 
   const filtered = useMemo(() => {
     return checklists.filter((c) => {
-      if (statusFilter !== 'all' && c.status !== statusFilter) return false
+      if (scopeFilter === 'mine') {
+        const mine =
+          c.createdBy.id === currentUserId ||
+          c.assignedTo?.id === currentUserId ||
+          c.items.some((i) => i.assignedTo?.id === currentUserId)
+        if (!mine) return false
+      }
+      if (scopeFilter === 'private' && c.visibility !== 'private') return false
       if (categoryFilter && c.category !== categoryFilter) return false
       if (assigneeFilter === 'me' && c.assignedTo?.id !== currentUserId) return false
       if (assigneeFilter && assigneeFilter !== 'me' && c.assignedTo?.id !== assigneeFilter)
@@ -66,22 +77,16 @@ export function DashboardClient({ currentUserId }: { currentUserId: string }) {
       if (search && !c.title.toLowerCase().includes(search.toLowerCase())) return false
       return true
     })
-  }, [checklists, statusFilter, categoryFilter, assigneeFilter, search, currentUserId])
+  }, [checklists, scopeFilter, categoryFilter, assigneeFilter, search, currentUserId])
 
   const stats = useMemo(() => {
-    const active = checklists.filter((c) => c.status === 'active')
-    const mine = active.filter((c) => c.assignedTo?.id === currentUserId)
-    const overdue = active.filter((c) => c.dueDate && new Date(c.dueDate) < new Date())
-    return {
-      active: active.length,
-      mine: mine.length,
-      overdue: overdue.length,
-      completed: checklists.filter((c) => c.status === 'completed').length,
-    }
+    const mine = checklists.filter((c) => c.assignedTo?.id === currentUserId)
+    const overdue = checklists.filter((c) => c.dueDate && new Date(c.dueDate) < new Date())
+    return { active: checklists.length, mine: mine.length, overdue: overdue.length }
   }, [checklists, currentUserId])
 
   if (loading) {
-    return <p className="py-12 text-center text-sm text-slate-400">Loading…</p>
+    return <p className="py-12 text-center text-sm text-faint">Loading…</p>
   }
 
   return (
@@ -89,44 +94,50 @@ export function DashboardClient({ currentUserId }: { currentUserId: string }) {
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { label: 'Active', value: stats.active, color: 'text-blue-600' },
-          { label: 'Assigned to me', value: stats.mine, color: 'text-indigo-600' },
-          { label: 'Overdue', value: stats.overdue, color: 'text-red-600' },
-          { label: 'Completed', value: stats.completed, color: 'text-emerald-600' },
+          { label: 'Active', value: stats.active, color: 'text-accent' },
+          { label: 'Assigned to me', value: stats.mine, color: 'text-ink' },
+          { label: 'Overdue', value: stats.overdue, color: 'text-danger' },
         ].map((s) => (
-          <div key={s.label} className="rounded-xl border border-slate-200 bg-white p-4">
+          <div key={s.label} className="rounded-xl border border-border bg-panel p-4">
             <p className={cn('text-2xl font-bold', s.color)}>{s.value}</p>
-            <p className="text-xs text-slate-500">{s.label}</p>
+            <p className="text-xs text-muted">{s.label}</p>
           </div>
         ))}
+        <Link
+          href="/completed"
+          className="rounded-xl border border-border bg-panel p-4 transition hover:border-accent"
+        >
+          <p className="text-2xl font-bold text-ok">{completedTotal}</p>
+          <p className="text-xs text-muted">Completed →</p>
+        </Link>
       </div>
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-faint" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search checklists…"
-            className="rounded-lg border border-slate-300 bg-white py-2 pl-8 pr-3 text-sm focus:border-blue-500 focus:outline-none"
+            className="rounded-lg border border-border bg-field py-2 pl-8 pr-3 text-sm focus:border-accent focus:outline-none"
           />
         </div>
 
         <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-          className="rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm"
+          value={scopeFilter}
+          onChange={(e) => setScopeFilter(e.target.value as typeof scopeFilter)}
+          className="rounded-lg border border-border bg-field px-2 py-2 text-sm"
         >
-          <option value="active">Active</option>
-          <option value="completed">Completed</option>
-          <option value="all">All</option>
+          <option value="all">All lists</option>
+          <option value="mine">My lists</option>
+          <option value="private">Private</option>
         </select>
 
         <select
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
-          className="rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm"
+          className="rounded-lg border border-border bg-field px-2 py-2 text-sm"
         >
           <option value="">All categories</option>
           {categories.map((c) => (
@@ -139,7 +150,7 @@ export function DashboardClient({ currentUserId }: { currentUserId: string }) {
         <select
           value={assigneeFilter}
           onChange={(e) => setAssigneeFilter(e.target.value)}
-          className="rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm"
+          className="rounded-lg border border-border bg-field px-2 py-2 text-sm"
         >
           <option value="">Anyone</option>
           <option value="me">Assigned to me</option>
@@ -154,7 +165,7 @@ export function DashboardClient({ currentUserId }: { currentUserId: string }) {
 
         <button
           onClick={() => setShowCreate(true)}
-          className="ml-auto flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+          className="ml-auto flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-accent-ink hover:bg-accent-2"
         >
           <Plus className="h-4 w-4" /> New checklist
         </button>
@@ -162,9 +173,9 @@ export function DashboardClient({ currentUserId }: { currentUserId: string }) {
 
       {/* Checklist cards */}
       {filtered.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-300 py-16 text-center">
-          <ClipboardList className="mx-auto h-8 w-8 text-slate-300" />
-          <p className="mt-2 text-sm text-slate-400">No checklists match.</p>
+        <div className="rounded-xl border border-dashed border-border py-16 text-center">
+          <ClipboardList className="mx-auto h-8 w-8 text-faint" />
+          <p className="mt-2 text-sm text-faint">No active checklists match.</p>
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -178,12 +189,12 @@ export function DashboardClient({ currentUserId }: { currentUserId: string }) {
               <Link
                 key={c.id}
                 href={`/checklists/${c.id}`}
-                className="rounded-xl border border-slate-200 bg-white p-4 transition hover:border-blue-300 hover:shadow-sm"
+                className="rounded-xl border border-border bg-panel p-4 transition hover:border-accent hover:shadow-sm"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <h3 className="font-semibold text-slate-900">{c.title}</h3>
+                  <h3 className="font-semibold text-ink">{c.title}</h3>
                   {c.status === 'completed' ? (
-                    <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-500" />
+                    <CheckCircle2 className="h-5 w-5 shrink-0 text-ok" />
                   ) : (
                     <span
                       className={cn(
@@ -196,16 +207,21 @@ export function DashboardClient({ currentUserId }: { currentUserId: string }) {
                   )}
                 </div>
 
-                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-                  <span className="rounded bg-slate-100 px-1.5 py-0.5">{c.category}</span>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+                  <span className="rounded bg-hover px-1.5 py-0.5">{c.category}</span>
+                  {c.visibility === 'private' && (
+                    <span className="flex items-center gap-1">
+                      <Lock className="h-3 w-3" /> private
+                    </span>
+                  )}
                   {c.recurrence !== 'none' && (
-                    <span className="flex items-center gap-1 text-blue-600">
+                    <span className="flex items-center gap-1 text-accent">
                       <RefreshCw className="h-3 w-3" /> {c.recurrence}
                     </span>
                   )}
                   {c.dueDate && (
                     <span
-                      className={cn('flex items-center gap-1', overdue && 'font-semibold text-red-600')}
+                      className={cn('flex items-center gap-1', overdue && 'font-semibold text-danger')}
                     >
                       <Calendar className="h-3 w-3" />
                       {new Date(c.dueDate).toLocaleDateString()}
@@ -220,18 +236,15 @@ export function DashboardClient({ currentUserId }: { currentUserId: string }) {
 
                 {total > 0 && (
                   <div className="mt-3">
-                    <div className="mb-1 flex justify-between text-[11px] text-slate-400">
+                    <div className="mb-1 flex justify-between text-[11px] text-faint">
                       <span>
                         {done}/{total} done
                       </span>
                       <span>{pct}%</span>
                     </div>
-                    <div className="h-1.5 rounded-full bg-slate-100">
+                    <div className="h-1.5 rounded-full bg-hover">
                       <div
-                        className={cn(
-                          'h-1.5 rounded-full',
-                          pct === 100 ? 'bg-emerald-500' : 'bg-blue-500'
-                        )}
+                        className={cn('h-1.5 rounded-full', pct === 100 ? 'bg-ok' : 'bg-accent')}
                         style={{ width: `${pct}%` }}
                       />
                     </div>
@@ -275,6 +288,7 @@ function CreateChecklistModal({
   const [dueDate, setDueDate] = useState('')
   const [assignedToId, setAssignedToId] = useState('')
   const [priority, setPriority] = useState('medium')
+  const [visibility, setVisibility] = useState('team')
   const [itemsText, setItemsText] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -288,6 +302,7 @@ function CreateChecklistModal({
         dueDate: dueDate ? new Date(`${dueDate}T00:00:00`).toISOString() : null,
         assignedToId: assignedToId || null,
         priority,
+        visibility,
       }
       const body =
         mode === 'template'
@@ -321,7 +336,7 @@ function CreateChecklistModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
       <form
         onSubmit={submit}
-        className="w-full max-w-md space-y-3 rounded-2xl bg-white p-5 shadow-xl"
+        className="w-full max-w-md space-y-3 rounded-2xl border border-border bg-panel p-5 shadow-xl"
       >
         <h2 className="text-lg font-semibold">New checklist</h2>
 
@@ -333,7 +348,7 @@ function CreateChecklistModal({
               onClick={() => setMode(m)}
               className={cn(
                 'rounded-lg px-3 py-1.5 text-sm font-medium',
-                mode === m ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'
+                mode === m ? 'bg-accent text-accent-ink' : 'bg-hover text-muted'
               )}
             >
               {m === 'template' ? 'From template' : 'Blank'}
@@ -349,7 +364,7 @@ function CreateChecklistModal({
                 value={templateId}
                 onChange={(e) => setTemplateId(e.target.value)}
                 required
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm"
               >
                 {templates.map((t) => (
                   <option key={t.id} value={t.id}>
@@ -361,12 +376,12 @@ function CreateChecklistModal({
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium">
-                Title <span className="font-normal text-slate-400">(optional override)</span>
+                Title <span className="font-normal text-faint">(optional override)</span>
               </label>
               <input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm"
               />
             </div>
           </>
@@ -378,7 +393,7 @@ function CreateChecklistModal({
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 required
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm"
               />
             </div>
             <div>
@@ -387,7 +402,7 @@ function CreateChecklistModal({
                 value={itemsText}
                 onChange={(e) => setItemsText(e.target.value)}
                 rows={4}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm"
               />
             </div>
           </>
@@ -400,7 +415,7 @@ function CreateChecklistModal({
               type="date"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm"
             />
           </div>
           <div>
@@ -408,7 +423,7 @@ function CreateChecklistModal({
             <select
               value={priority}
               onChange={(e) => setPriority(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm"
             >
               <option value="low">Low</option>
               <option value="medium">Medium</option>
@@ -417,36 +432,49 @@ function CreateChecklistModal({
           </div>
         </div>
 
-        <div>
-          <label className="mb-1 block text-sm font-medium">Assign to</label>
-          <select
-            value={assignedToId}
-            onChange={(e) => setAssignedToId(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          >
-            <option value="">Unassigned</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
-            ))}
-          </select>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-sm font-medium">Assign to</label>
+            <select
+              value={assignedToId}
+              onChange={(e) => setAssignedToId(e.target.value)}
+              className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm"
+            >
+              <option value="">Unassigned</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium">Visibility</label>
+            <select
+              value={visibility}
+              onChange={(e) => setVisibility(e.target.value)}
+              className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm"
+            >
+              <option value="team">Team — everyone</option>
+              <option value="private">Private — only me + shared</option>
+            </select>
+          </div>
         </div>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-danger">{error}</p>}
 
         <div className="flex justify-end gap-2 pt-1">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+            className="rounded-lg px-3 py-2 text-sm font-medium text-muted hover:bg-hover"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={busy || (mode === 'template' && !templateId)}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-ink hover:bg-accent-2 disabled:opacity-50"
           >
             {busy ? 'Creating…' : 'Create'}
           </button>

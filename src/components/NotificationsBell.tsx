@@ -60,43 +60,43 @@ export function NotificationsBell() {
     <div className="relative" ref={panelRef}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="relative rounded-lg p-2 text-slate-600 hover:bg-slate-100"
+        className="relative rounded-lg p-2 text-muted hover:bg-hover"
         aria-label="Notifications"
       >
         <Bell className="h-5 w-5" />
         {unreadCount > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] font-bold text-white">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
       </button>
 
       {open && (
-        <div className="absolute right-0 z-50 mt-2 w-80 rounded-xl border border-slate-200 bg-white shadow-lg">
-          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
+        <div className="absolute right-0 z-50 mt-2 w-80 rounded-xl border border-border bg-panel shadow-lg">
+          <div className="flex items-center justify-between border-b border-border-soft px-4 py-2.5">
             <span className="text-sm font-semibold">Notifications</span>
             {unreadCount > 0 && (
-              <button onClick={markAllRead} className="text-xs text-blue-600 hover:underline">
+              <button onClick={markAllRead} className="text-xs text-accent hover:underline">
                 Mark all read
               </button>
             )}
           </div>
           <div className="max-h-96 overflow-y-auto">
             {notifications.length === 0 && (
-              <p className="px-4 py-6 text-center text-sm text-slate-400">No notifications</p>
+              <p className="px-4 py-6 text-center text-sm text-faint">No notifications</p>
             )}
             {notifications.map((n) => (
               <button
                 key={n.id}
                 onClick={() => openNotification(n)}
                 className={cn(
-                  'block w-full border-b border-slate-50 px-4 py-3 text-left hover:bg-slate-50',
-                  !n.read && 'bg-blue-50/50'
+                  'block w-full border-b border-border-soft px-4 py-3 text-left hover:bg-hover',
+                  !n.read && 'bg-accent-soft'
                 )}
               >
-                <p className="text-sm font-medium text-slate-800">{n.title}</p>
-                <p className="mt-0.5 text-xs text-slate-500">{n.body}</p>
-                <p className="mt-1 text-[11px] text-slate-400">
+                <p className="text-sm font-medium text-ink">{n.title}</p>
+                <p className="mt-0.5 text-xs text-muted">{n.body}</p>
+                <p className="mt-1 text-[11px] text-faint">
                   {new Date(n.createdAt).toLocaleString()}
                 </p>
               </button>

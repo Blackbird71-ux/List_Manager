@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { readFile } from 'node:fs/promises'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { checklistAccessWhere } from '@/lib/access'
 import { attachmentFilePath, deleteAttachmentFile } from '@/lib/attachments'
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -11,7 +12,12 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   }
 
   const { id } = await params
-  const attachment = await prisma.attachment.findUnique({ where: { id } })
+  const attachment = await prisma.attachment.findFirst({
+    where: {
+      id,
+      item: { checklist: checklistAccessWhere(session.user.id, session.user.role) },
+    },
+  })
   if (!attachment) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
@@ -39,7 +45,12 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   }
 
   const { id } = await params
-  const attachment = await prisma.attachment.findUnique({ where: { id } })
+  const attachment = await prisma.attachment.findFirst({
+    where: {
+      id,
+      item: { checklist: checklistAccessWhere(session.user.id, session.user.role) },
+    },
+  })
   if (!attachment) {
     return NextResponse.json({ ok: true })
   }

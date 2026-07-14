@@ -54,12 +54,12 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center gap-2">
-          <div className="rounded-2xl bg-blue-600 p-3">
-            <ClipboardList className="h-7 w-7 text-white" />
+          <div className="rounded-2xl bg-accent p-3">
+            <ClipboardList className="h-7 w-7 text-accent-ink" />
           </div>
           <h1 className="text-xl font-semibold">Lists Manager</h1>
           {bootstrap && (
-            <p className="text-center text-sm text-slate-500">
+            <p className="text-center text-sm text-muted">
               Welcome! Create the first (admin) account to get started.
             </p>
           )}
@@ -67,32 +67,32 @@ export default function LoginPage() {
 
         <form
           onSubmit={handleSubmit}
-          className="space-y-3 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+          className="space-y-3 rounded-2xl border border-border bg-panel p-6 shadow-sm"
         >
           {bootstrap && (
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Name</label>
+              <label className="mb-1 block text-sm font-medium text-ink">Name</label>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+                className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm focus:border-accent focus:outline-none"
               />
             </div>
           )}
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Email</label>
+            <label className="mb-1 block text-sm font-medium text-ink">Email</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
               autoComplete="email"
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+              className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm focus:border-accent focus:outline-none"
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Password</label>
+            <label className="mb-1 block text-sm font-medium text-ink">Password</label>
             <input
               type="password"
               value={password}
@@ -100,16 +100,16 @@ export default function LoginPage() {
               required
               minLength={bootstrap ? 8 : undefined}
               autoComplete={bootstrap ? 'new-password' : 'current-password'}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+              className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm focus:border-accent focus:outline-none"
             />
           </div>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && <p className="text-sm text-danger">{error}</p>}
 
           <button
             type="submit"
             disabled={busy}
-            className="w-full rounded-lg bg-blue-600 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+            className="w-full rounded-lg bg-accent py-2 text-sm font-semibold text-accent-ink hover:bg-accent-2 disabled:opacity-50"
           >
             {busy ? 'Please wait…' : bootstrap ? 'Create admin account' : 'Sign in'}
           </button>

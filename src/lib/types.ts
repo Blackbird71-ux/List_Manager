@@ -84,12 +84,14 @@ export interface ApiChecklist {
   dueDate: string | null
   completedAt: string | null
   nextInstanceId: string | null
+  visibility: string // "team" | "private"
   createdAt: string
   items: ApiChecklistItem[]
   fieldValues: ApiCustomFieldValue[]
   assignedTo: ApiUserRef | null
   createdBy: ApiUserRef
   template: { id: string; title: string } | null
+  shares: { user: ApiUserRef }[]
 }
 
 export interface ApiNotification {

@@ -1,9 +1,102 @@
 @import "tailwindcss";
 
+/* Three themes, all token-driven so components share one class layer:
+   - light (default): the original slate + blue look
+   - iris: "Iris & Ink" — cool violet neutrals, electric iris accent (matches Talk2type)
+   - dark: the Iris & Ink dark counterpart
+   The selector is stamped on <html data-theme="..."> before hydration (see layout.tsx). */
+
 :root {
+  --surface: #f8fafc;
+  --panel: #ffffff;
+  --field: #ffffff;
+  --border: #e2e8f0;
+  --border-soft: #f1f5f9;
+  --ink: #0f172a;
+  --muted: #475569;
+  --faint: #94a3b8;
+  --hover: #f1f5f9;
+  --accent: #2563eb;
+  --accent-2: #1d4ed8;
+  --accent-ink: #ffffff;
+  --accent-soft: #eff6ff;
+  --danger: #dc2626;
+  --danger-soft: #fee2e2;
+  --ok: #16a34a;
+  --ok-soft: #dcfce7;
+  --warn: #d97706;
+  --warn-soft: #fef3c7;
   color-scheme: light;
 }
 
+:root[data-theme="iris"] {
+  --surface: #f1f1f6;
+  --panel: #ffffff;
+  --field: #ffffff;
+  --border: #e6e6ee;
+  --border-soft: #eeeef4;
+  --ink: #17171f;
+  --muted: #6a6a79;
+  --faint: #9a9aa8;
+  --hover: #edecfb;
+  --accent: #5b5bf5;
+  --accent-2: #4a4ae0;
+  --accent-ink: #ffffff;
+  --accent-soft: #eeeefe;
+  --danger: #e5484d;
+  --danger-soft: #fdebec;
+  --ok: #30a46c;
+  --ok-soft: #e6f6ed;
+  --warn: #d97706;
+  --warn-soft: #fdf1dc;
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --surface: #0e0e14;
+  --panel: #16161d;
+  --field: #14141c;
+  --border: #2a2a37;
+  --border-soft: #23232f;
+  --ink: #ececf2;
+  --muted: #9797a6;
+  --faint: #6c6c7c;
+  --hover: #20202a;
+  --accent: #7c7bff;
+  --accent-2: #8f8eff;
+  --accent-ink: #0e0e14;
+  --accent-soft: #201f38;
+  --danger: #ff6369;
+  --danger-soft: #3a1d20;
+  --ok: #3dd68c;
+  --ok-soft: #16281f;
+  --warn: #e5a33f;
+  --warn-soft: #2e2417;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-surface: var(--surface);
+  --color-panel: var(--panel);
+  --color-field: var(--field);
+  --color-border: var(--border);
+  --color-border-soft: var(--border-soft);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-hover: var(--hover);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+}
+
 body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+  @apply bg-surface text-ink antialiased;
 }

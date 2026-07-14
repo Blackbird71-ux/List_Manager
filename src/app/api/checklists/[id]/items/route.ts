@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { checklistAccessWhere } from '@/lib/access'
 
 const createSchema = z.object({
   text: z.string().trim().min(1).max(500),
@@ -22,7 +23,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
   }
 
-  const checklist = await prisma.checklist.findUnique({ where: { id }, select: { id: true } })
+  const checklist = await prisma.checklist.findFirst({
+    where: { id, ...checklistAccessWhere(session.user.id, session.user.role) },
+    select: { id: true },
+  })
   if (!checklist) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }

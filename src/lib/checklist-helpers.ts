@@ -17,6 +17,7 @@ const checklistInclude = {
   assignedTo: { select: { id: true, name: true, email: true } },
   createdBy: { select: { id: true, name: true, email: true } },
   template: { select: { id: true, title: true } },
+  shares: { select: { user: { select: { id: true, name: true, email: true } } } },
 }
 
 export function getChecklistInclude() {
@@ -34,6 +35,7 @@ export async function createChecklistFromTemplate(params: {
   dueDate?: Date | null
   assignedToId?: string | null
   priority?: string
+  visibility?: string
 }) {
   const template = await prisma.template.findUnique({
     where: { id: params.templateId },
@@ -51,6 +53,7 @@ export async function createChecklistFromTemplate(params: {
       category: template.category,
       recurrence: template.recurrence,
       priority: params.priority ?? 'medium',
+      visibility: params.visibility === 'private' ? 'private' : 'team',
       dueDate: params.dueDate ?? null,
       templateId: template.id,
       createdById: params.createdById,
@@ -94,6 +97,7 @@ interface CloneSource {
   category: string
   priority: string
   recurrence: string
+  visibility: string
   templateId: string | null
   createdById: string
   assignedToId: string | null
@@ -118,6 +122,7 @@ async function cloneForNextRun(
       category: source.category,
       priority: source.priority,
       recurrence: recurrence ?? source.recurrence,
+      visibility: source.visibility,
       dueDate,
       templateId: source.templateId,
       createdById: source.createdById,
@@ -140,6 +145,17 @@ async function cloneForNextRun(
   if (fieldValues.length > 0) {
     await tx.customFieldValue.createMany({
       data: fieldValues.map((f) => ({ checklistId: next.id, name: f.name, type: f.type, value: '' })),
+    })
+  }
+
+  // Keep the same people in the loop on the next run.
+  const shares = await tx.checklistShare.findMany({
+    where: { checklistId: source.id },
+    select: { userId: true },
+  })
+  if (shares.length > 0) {
+    await tx.checklistShare.createMany({
+      data: shares.map((s) => ({ checklistId: next.id, userId: s.userId })),
     })
   }
 

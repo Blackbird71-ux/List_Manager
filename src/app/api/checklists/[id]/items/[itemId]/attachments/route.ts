@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { checklistAccessWhere } from '@/lib/access'
 import { MAX_ATTACHMENT_SIZE, saveAttachmentFile } from '@/lib/attachments'
 
 export async function POST(
@@ -14,7 +15,11 @@ export async function POST(
 
   const { id, itemId } = await params
   const item = await prisma.checklistItem.findFirst({
-    where: { id: itemId, checklistId: id },
+    where: {
+      id: itemId,
+      checklistId: id,
+      checklist: checklistAccessWhere(session.user.id, session.user.role),
+    },
     select: { id: true },
   })
   if (!item) {

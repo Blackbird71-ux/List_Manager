@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { RECURRENCE_OPTIONS } from '@/lib/recurrence'
+import { canAccessChecklist, canManageChecklist, checklistAccessWhere } from '@/lib/access'
 import { completeChecklist, getChecklistInclude } from '@/lib/checklist-helpers'
 import { notify } from '@/lib/notifications'
 
@@ -13,8 +14,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   }
 
   const { id } = await params
-  const checklist = await prisma.checklist.findUnique({
-    where: { id },
+  const checklist = await prisma.checklist.findFirst({
+    where: { id, ...checklistAccessWhere(session.user.id, session.user.role) },
     include: getChecklistInclude(),
   })
   if (!checklist) {
@@ -32,6 +33,8 @@ const patchSchema = z.object({
   dueDate: z.iso.datetime().nullish(),
   assignedToId: z.string().nullish(),
   status: z.enum(['active', 'completed']).optional(),
+  visibility: z.enum(['team', 'private']).optional(),
+  sharedUserIds: z.array(z.string().min(1)).max(100).optional(),
   fieldValues: z
     .array(z.object({ id: z.string().min(1), value: z.string().max(2000) }))
     .optional(),
@@ -50,19 +53,29 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
   }
 
-  const existing = await prisma.checklist.findUnique({
-    where: { id },
+  const existing = await prisma.checklist.findFirst({
+    where: { id, ...checklistAccessWhere(session.user.id, session.user.role) },
     select: { id: true, status: true, assignedToId: true, title: true },
   })
   if (!existing) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  const { status, fieldValues, dueDate, assignedToId, ...scalars } = parsed.data
+  const { status, fieldValues, dueDate, assignedToId, visibility, sharedUserIds, ...scalars } =
+    parsed.data
+
+  // Visibility and sharing are managed by the creator, managers and admins.
+  if (visibility !== undefined || sharedUserIds !== undefined) {
+    const allowed = await canManageChecklist(id, session.user.id, session.user.role)
+    if (!allowed) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+  }
 
   const data: Record<string, unknown> = { ...scalars }
   if (dueDate !== undefined) data.dueDate = dueDate ? new Date(dueDate) : null
   if (assignedToId !== undefined) data.assignedToId = assignedToId ?? null
+  if (visibility !== undefined) data.visibility = visibility
   if (status === 'active' && existing.status === 'completed') {
     data.status = 'active'
     data.completedAt = null
@@ -75,6 +88,35 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         where: { id: fv.id, checklistId: id },
         data: { value: fv.value },
       })
+    }
+  }
+
+  if (sharedUserIds !== undefined) {
+    const previous = await prisma.checklistShare.findMany({
+      where: { checklistId: id },
+      select: { userId: true },
+    })
+    const validUsers = await prisma.user.findMany({
+      where: { id: { in: sharedUserIds } },
+      select: { id: true },
+    })
+    const wanted = validUsers.map((u) => u.id).filter((uid) => uid !== session.user.id)
+    await prisma.$transaction([
+      prisma.checklistShare.deleteMany({ where: { checklistId: id } }),
+      prisma.checklistShare.createMany({
+        data: wanted.map((userId) => ({ checklistId: id, userId })),
+      }),
+    ])
+    const previousIds = new Set(previous.map((s) => s.userId))
+    for (const userId of wanted) {
+      if (!previousIds.has(userId)) {
+        await notify(
+          userId,
+          'Checklist shared with you',
+          `${session.user.name} shared "${scalars.title ?? existing.title}" with you.`,
+          id
+        )
+      }
     }
   }
 
@@ -106,6 +148,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   return NextResponse.json({ checklist })
 }
 
+// Creator, manager or admin only — a shared viewer must not be able to
+// delete the team's records.
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
   if (!session?.user?.id) {
@@ -113,6 +157,14 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   }
 
   const { id } = await params
+  const canView = await canAccessChecklist(id, session.user.id, session.user.role)
+  if (!canView) {
+    return NextResponse.json({ ok: true }) // hidden lists 404 the same as missing ones
+  }
+  const allowed = await canManageChecklist(id, session.user.id, session.user.role)
+  if (!allowed) {
+    return NextResponse.json({ error: 'Only the creator or a manager can delete this' }, { status: 403 })
+  }
   await prisma.checklist.delete({ where: { id } }).catch(() => null)
   return NextResponse.json({ ok: true })
 }
