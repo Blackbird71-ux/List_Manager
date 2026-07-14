@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { execSync } from 'child_process'
 import { writeFileSync } from 'fs'
 import { auth } from '@/lib/auth'
 
@@ -36,8 +37,30 @@ ingress:
 `
   try {
     writeFileSync('/etc/cloudflared/config.yml', config, 'utf8')
-    return NextResponse.json({ ok: true })
   } catch {
     return NextResponse.json({ error: 'Failed to write config — is /etc/cloudflared mounted and writable?' }, { status: 500 })
+  }
+
+  // Create the DNS CNAME (host -> <tunnelId>.cfargotunnel.com) from here so no
+  // Cloudflare dashboard step is needed. tunnelId and host are regex-validated
+  // above, so they are safe to interpolate.
+  try {
+    execSync(
+      `cloudflared --origincert /etc/cloudflared/cert.pem tunnel route dns ${tunnelId} ${host} 2>&1`,
+      { encoding: 'utf8', timeout: 30000 }
+    )
+    return NextResponse.json({ ok: true, dns: 'created' })
+  } catch (e) {
+    const err = e as NodeJS.ErrnoException & { stdout?: string; stderr?: string }
+    const msg = err.stdout ?? err.stderr ?? err.message ?? String(e)
+    if (/already exists|already has/i.test(msg)) {
+      return NextResponse.json({ ok: true, dns: 'exists' })
+    }
+    // Config was saved — the tunnel can still start; only the DNS record failed.
+    return NextResponse.json({
+      ok: true,
+      dns: 'failed',
+      dnsWarning: `Config saved, but creating the DNS record failed: ${msg.trim().slice(0, 300)}`,
+    })
   }
 }
