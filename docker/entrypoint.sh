@@ -132,7 +132,7 @@ export DIGEST_SECRET
 
 {
   echo "0 3 * * * su-exec nextjs:nodejs /app/scripts/backup-db.sh /data/backups >> /data/backups/cron.log 2>&1"
-  echo "0 7 * * * wget -q -O- --header \"x-digest-secret: $DIGEST_SECRET\" http://localhost:3000/api/digest/overdue >> /data/backups/digest.log 2>&1"
+  echo "0 7 * * * wget -q -O- --header \"x-digest-secret: $DIGEST_SECRET\" http://127.0.0.1:3000/api/digest/overdue >> /data/backups/digest.log 2>&1"
 } > /etc/crontabs/root
 crond -b -l 2
 echo "   ok: cron daemon started (backup 03:00, overdue digest 07:00)"

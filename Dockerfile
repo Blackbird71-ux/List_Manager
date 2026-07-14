@@ -80,6 +80,10 @@ COPY --from=builder /app/package.json ./package.json
 # Prisma schema + ALL migration files so `prisma migrate deploy` can run at startup
 COPY --from=builder /app/prisma ./prisma
 
+# Prisma 7: the datasource URL lives in prisma.config.ts, not schema.prisma —
+# without it `migrate deploy` fails with "datasource.url property is required".
+COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
+
 # Full node_modules from builder — includes the prisma CLI (devDep) needed for
 # `migrate deploy` at startup, plus all serverExternalPackages and their deps.
 COPY --from=builder /app/node_modules ./node_modules

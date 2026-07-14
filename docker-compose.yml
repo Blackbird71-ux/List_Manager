@@ -1,5 +1,5 @@
-# =============================================================================
-# ListsManager – docker-compose.yml
+﻿# =============================================================================
+# ListsManager â€“ docker-compose.yml
 #
 # Usage on the Synology NAS:
 #   Build + start:  docker compose up -d --build
@@ -44,7 +44,7 @@ services:
       - /volume1/docker/listsmanager/cloudflared:/etc/cloudflared
 
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3

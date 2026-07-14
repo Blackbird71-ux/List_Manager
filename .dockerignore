@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+*.md
+.env*
+listsmanager.tar
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+coverage/
+.claude/
