@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'crypto'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
-import { emailConfigured, sendEmail } from '@/lib/email'
+import { getSmtpConfig, sendEmail } from '@/lib/email'
 
 const schema = z.object({
   email: z.string().trim().toLowerCase().email().max(200),
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
   }
 
-  if (!emailConfigured()) {
+  if (!(await getSmtpConfig())) {
     return NextResponse.json(
       { error: 'Email is not set up on this server. Ask an admin to reset your password instead.' },
       { status: 503 }

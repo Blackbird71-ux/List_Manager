@@ -31,6 +31,13 @@ model User {
   comments          Comment[]
 }
 
+// App-wide key/value settings (e.g. "smtp" -> JSON config), edited by admins
+// in Settings. Kept in the DB so secrets never live in .env files.
+model AppSetting {
+  key   String @id
+  value String
+}
+
 // A reusable master template. Copying it into a Checklist never mutates it.
 model Template {
   id          String   @id @default(cuid())

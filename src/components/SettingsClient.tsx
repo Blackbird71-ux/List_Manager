@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Check, Moon, Palette, Sun } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { TunnelSection } from '@/components/TunnelSection'
+import { EmailSection } from '@/components/EmailSection'
 
 type Theme = 'light' | 'iris' | 'dark'
 
@@ -75,6 +76,9 @@ export function SettingsClient({
 
       {/* Password */}
       <PasswordSection userId={user.id} />
+
+      {/* Email for password resets (admins only) */}
+      {user.role === 'admin' && <EmailSection />}
 
       {/* Remote access tunnel (admins only) */}
       {user.role === 'admin' && <TunnelSection />}

@@ -135,6 +135,13 @@ function topicsFor(pathname: string): { heading: string; topics: HelpTopic[] } {
           ],
         },
         {
+          title: 'Email (admins)',
+          points: [
+            'The Email section powers "Forgot password?" reset links. For Gmail, create an app password at myaccount.google.com/apppasswords and use that — never your real password.',
+            'Settings are stored in the app database, not in files on the server. Use "Send test email" to check they work.',
+          ],
+        },
+        {
           title: 'Remote access (admins)',
           points: [
             'The Remote access section manages the Cloudflare tunnel that makes the app reachable from outside the network.',
@@ -160,7 +167,7 @@ function topicsFor(pathname: string): { heading: string; topics: HelpTopic[] } {
           title: 'Password resets',
           points: [
             'Use the key button on a user to set a new password for them directly.',
-            'Users can also reset their own password from the "Forgot password?" link on the sign-in screen — this emails them a one-time link, so SMTP must be configured in the server environment.',
+            'Users can also reset their own password from the "Forgot password?" link on the sign-in screen — this emails them a one-time link, so an admin must first set up email in Settings.',
           ],
         },
       ],
