@@ -17,6 +17,10 @@ due date advanced by the recurrence interval.
 - **Recurrence** — none / daily / weekly / fortnightly / monthly / quarterly /
   yearly. Completing the last item spawns the next instance, anchored to the due
   date (a monthly list due on the 1st stays on the 1st).
+- **Re-use without recurrence** — completed one-off checklists offer a "Run it
+  again" prompt (pick the next due date, optionally make it repeat); a Reset
+  button unchecks everything in place; templates have a one-click
+  "Start checklist" action.
 - **Users & notifications** — per-user logins (NextAuth credentials), admin role
   for user management, in-app notifications when a checklist is assigned to you
   or a recurring list respawns.

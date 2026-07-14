@@ -1,8 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { Archive, ArchiveRestore, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
-import type { ApiTemplate } from '@/lib/types'
+import { useRouter } from 'next/navigation'
+import { Archive, ArchiveRestore, Pencil, Play, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import type { ApiTemplate, ApiUser } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 const RECURRENCES = ['none', 'daily', 'weekly', 'fortnightly', 'monthly', 'quarterly', 'yearly']
@@ -24,6 +25,7 @@ export function TemplatesClient() {
   const [loading, setLoading] = useState(true)
   const [showArchived, setShowArchived] = useState(false)
   const [editing, setEditing] = useState<ApiTemplate | 'new' | null>(null)
+  const [starting, setStarting] = useState<ApiTemplate | null>(null)
 
   const load = useCallback(async () => {
     const res = await fetch('/api/templates?archived=true')
@@ -134,6 +136,15 @@ export function TemplatesClient() {
                 {t.customFields.length > 0 && <span>{t.customFields.length} fields</span>}
                 <span>used {t._count.checklists}×</span>
               </div>
+
+              {!t.archived && (
+                <button
+                  onClick={() => setStarting(t)}
+                  className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                >
+                  <Play className="h-4 w-4" /> Start checklist
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -149,6 +160,112 @@ export function TemplatesClient() {
           }}
         />
       )}
+
+      {starting && <StartChecklistModal template={starting} onClose={() => setStarting(null)} />}
+    </div>
+  )
+}
+
+function StartChecklistModal({
+  template,
+  onClose,
+}: {
+  template: ApiTemplate
+  onClose: () => void
+}) {
+  const router = useRouter()
+  const [users, setUsers] = useState<ApiUser[]>([])
+  const [dueDate, setDueDate] = useState('')
+  const [assignedToId, setAssignedToId] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/users').then(async (res) => {
+      if (res.ok) setUsers((await res.json()).users)
+    })
+  }, [])
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    setError('')
+    setBusy(true)
+    try {
+      const res = await fetch('/api/checklists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          templateId: template.id,
+          dueDate: dueDate ? new Date(`${dueDate}T00:00:00`).toISOString() : null,
+          assignedToId: assignedToId || null,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setError(data.error ?? 'Could not create the checklist')
+        return
+      }
+      const data = await res.json()
+      router.push(`/checklists/${data.checklist.id}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+      <form onSubmit={submit} className="w-full max-w-sm space-y-3 rounded-2xl bg-white p-5 shadow-xl">
+        <h2 className="text-lg font-semibold">Start “{template.title}”</h2>
+        {template.recurrence !== 'none' && (
+          <p className="flex items-center gap-1 text-xs text-blue-600">
+            <RefreshCw className="h-3 w-3" /> Repeats {template.recurrence} — completing it creates
+            the next one automatically.
+          </p>
+        )}
+        <div>
+          <label className="mb-1 block text-sm font-medium">Due date (optional)</label>
+          <input
+            type="date"
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium">Assign to (optional)</label>
+          <select
+            value={assignedToId}
+            onChange={(e) => setAssignedToId(e.target.value)}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          >
+            <option value="">Unassigned</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {error && <p className="text-sm text-red-600">{error}</p>}
+
+        <div className="flex justify-end gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={busy}
+            className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            <Play className="h-4 w-4" /> {busy ? 'Starting…' : 'Start checklist'}
+          </button>
+        </div>
+      </form>
     </div>
   )
 }

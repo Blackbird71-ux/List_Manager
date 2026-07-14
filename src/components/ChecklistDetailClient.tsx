@@ -12,6 +12,7 @@ import {
   Paperclip,
   Plus,
   RefreshCw,
+  RotateCcw,
   Trash2,
   User as UserIcon,
 } from 'lucide-react'
@@ -77,6 +78,16 @@ export function ChecklistDetailClient({ checklistId }: { checklistId: string }) 
     }
   }
 
+  async function resetChecklist() {
+    if (!checklist) return
+    if (!confirm(`Reset "${checklist.title}"? All items will be unchecked.`)) return
+    const res = await fetch(`/api/checklists/${checklistId}/reset`, { method: 'POST' })
+    if (res.ok) {
+      setJustCompleted(false)
+      setChecklist((await res.json()).checklist)
+    }
+  }
+
   async function removeChecklist() {
     if (!checklist) return
     if (!confirm(`Delete "${checklist.title}"? This cannot be undone.`)) return
@@ -109,11 +120,13 @@ export function ChecklistDetailClient({ checklistId }: { checklistId: string }) 
         <ArrowLeft className="h-4 w-4" /> All checklists
       </Link>
 
-      {justCompleted && checklist.recurrence !== 'none' && checklist.nextInstanceId && (
+      {completed && checklist.nextInstanceId && (
         <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
           <RefreshCw className="h-4 w-4 shrink-0" />
           <span>
-            All done! The next {checklist.recurrence} instance has been created.{' '}
+            {justCompleted ? 'All done! The' : 'The'}{' '}
+            {checklist.recurrence !== 'none' ? `next ${checklist.recurrence} instance` : 'next run'}{' '}
+            has been created.{' '}
             <Link
               href={`/checklists/${checklist.nextInstanceId}`}
               className="font-semibold underline"
@@ -122,6 +135,10 @@ export function ChecklistDetailClient({ checklistId }: { checklistId: string }) 
             </Link>
           </span>
         </div>
+      )}
+
+      {completed && !checklist.nextInstanceId && (
+        <RunAgainPanel checklistId={checklistId} justCompleted={justCompleted} />
       )}
 
       {/* Header card */}
@@ -146,6 +163,15 @@ export function ChecklistDetailClient({ checklistId }: { checklistId: string }) 
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            {(done > 0 || completed) && (
+              <button
+                onClick={resetChecklist}
+                className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
+                title="Uncheck all items and reopen"
+              >
+                <RotateCcw className="h-4 w-4" /> Reset
+              </button>
+            )}
             {completed ? (
               <button
                 onClick={() => patchChecklist({ status: 'active' })}
@@ -306,6 +332,88 @@ export function ChecklistDetailClient({ checklistId }: { checklistId: string }) 
         </form>
       </div>
     </div>
+  )
+}
+
+const RECURRENCES = ['none', 'daily', 'weekly', 'fortnightly', 'monthly', 'quarterly', 'yearly']
+
+function RunAgainPanel({
+  checklistId,
+  justCompleted,
+}: {
+  checklistId: string
+  justCompleted: boolean
+}) {
+  const router = useRouter()
+  const [dueDate, setDueDate] = useState('')
+  const [recurrence, setRecurrence] = useState('none')
+  const [busy, setBusy] = useState(false)
+
+  async function runAgain(e: React.FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/checklists/${checklistId}/run-again`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dueDate: dueDate ? new Date(`${dueDate}T00:00:00`).toISOString() : null,
+          recurrence,
+        }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        router.push(`/checklists/${data.id}`)
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form
+      onSubmit={runAgain}
+      className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900"
+    >
+      <p className="font-medium">
+        {justCompleted ? 'All done! ' : ''}Run this checklist again?
+      </p>
+      <p className="mt-0.5 text-xs text-blue-700">
+        Creates a fresh copy with every item unchecked — the completed one stays for your records.
+      </p>
+      <div className="mt-2 flex flex-wrap items-end gap-2">
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-blue-700">Next due date</span>
+          <input
+            type="date"
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+            className="rounded-lg border border-blue-300 bg-white px-2 py-1.5 text-sm"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-blue-700">Then repeats</span>
+          <select
+            value={recurrence}
+            onChange={(e) => setRecurrence(e.target.value)}
+            className="rounded-lg border border-blue-300 bg-white px-2 py-1.5 text-sm"
+          >
+            {RECURRENCES.map((r) => (
+              <option key={r} value={r}>
+                {r === 'none' ? 'Does not repeat' : r}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="submit"
+          disabled={busy}
+          className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          <RefreshCw className="h-4 w-4" /> {busy ? 'Creating…' : 'Create next checklist'}
+        </button>
+      </div>
+    </form>
   )
 }
 

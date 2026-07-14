@@ -85,6 +85,139 @@ export async function createChecklistFromTemplate(params: {
   return checklist
 }
 
+type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
+
+interface CloneSource {
+  id: string
+  title: string
+  description: string
+  category: string
+  priority: string
+  recurrence: string
+  templateId: string | null
+  createdById: string
+  assignedToId: string | null
+  items: { text: string; priority: string | null; assignedToId: string | null }[]
+}
+
+/**
+ * Copy a checklist for another run: same structure and assignees, all items
+ * unchecked, notes and field values blank. Used by the recurrence spawn and
+ * the manual "run again" action.
+ */
+async function cloneForNextRun(
+  tx: TxClient,
+  source: CloneSource,
+  dueDate: Date | null,
+  recurrence?: string
+) {
+  const next = await tx.checklist.create({
+    data: {
+      title: source.title,
+      description: source.description,
+      category: source.category,
+      priority: source.priority,
+      recurrence: recurrence ?? source.recurrence,
+      dueDate,
+      templateId: source.templateId,
+      createdById: source.createdById,
+      assignedToId: source.assignedToId,
+      items: {
+        create: source.items.map((item, idx) => ({
+          text: item.text,
+          priority: item.priority,
+          sortOrder: idx,
+          assignedToId: item.assignedToId,
+        })),
+      },
+    },
+  })
+
+  const fieldValues = await tx.customFieldValue.findMany({
+    where: { checklistId: source.id },
+    select: { name: true, type: true },
+  })
+  if (fieldValues.length > 0) {
+    await tx.customFieldValue.createMany({
+      data: fieldValues.map((f) => ({ checklistId: next.id, name: f.name, type: f.type, value: '' })),
+    })
+  }
+
+  return next
+}
+
+/**
+ * Manual "run again": copy a checklist for a future run without waiting for
+ * recurrence. Returns the new checklist's id.
+ */
+export async function runChecklistAgain(params: {
+  checklistId: string
+  actorId: string
+  dueDate: Date | null
+  recurrence?: string
+}): Promise<string | null> {
+  const source = await prisma.checklist.findUnique({
+    where: { id: params.checklistId },
+    include: { items: { orderBy: { sortOrder: 'asc' } } },
+  })
+  if (!source) return null
+
+  const copy = await prisma.$transaction(async (tx) => {
+    const next = await cloneForNextRun(tx, source, params.dueDate, params.recurrence)
+    // Link the chain if this checklist has no next run yet. Also suppresses a
+    // duplicate auto-spawn if the source is recurring and completed later.
+    const fresh = await tx.checklist.findUnique({
+      where: { id: source.id },
+      select: { nextInstanceId: true },
+    })
+    if (!fresh?.nextInstanceId) {
+      await tx.checklist.update({
+        where: { id: source.id },
+        data: { nextInstanceId: next.id },
+      })
+    }
+    return next
+  })
+
+  if (source.assignedToId && source.assignedToId !== params.actorId) {
+    const dueLabel = params.dueDate
+      ? ` Due ${formatInTz(params.dueDate, { day: 'numeric', month: 'short', year: 'numeric' })}.`
+      : ''
+    await notify(
+      source.assignedToId,
+      'Checklist scheduled again',
+      `"${source.title}" has been scheduled to run again.${dueLabel}`,
+      copy.id
+    )
+  }
+
+  return copy.id
+}
+
+/**
+ * Reset a checklist in place: uncheck every item and reopen it.
+ * Item notes and attachments are kept.
+ */
+export async function resetChecklist(checklistId: string): Promise<boolean> {
+  const existing = await prisma.checklist.findUnique({
+    where: { id: checklistId },
+    select: { id: true },
+  })
+  if (!existing) return false
+
+  await prisma.$transaction([
+    prisma.checklistItem.updateMany({
+      where: { checklistId },
+      data: { checked: false, checkedByName: null, checkedAt: null },
+    }),
+    prisma.checklist.update({
+      where: { id: checklistId },
+      data: { status: 'active', completedAt: null },
+    }),
+  ])
+  return true
+}
+
 /**
  * Completion funnel — the ONLY place a checklist transitions to completed.
  * Marks it complete and, for recurring checklists, spawns the next instance
@@ -126,37 +259,7 @@ export async function completeChecklist(checklistId: string): Promise<{ spawnedI
     })
     if (fresh?.nextInstanceId) return null
 
-    const next = await tx.checklist.create({
-      data: {
-        title: checklist.title,
-        description: checklist.description,
-        category: checklist.category,
-        priority: checklist.priority,
-        recurrence: checklist.recurrence,
-        dueDate: nextDue,
-        templateId: checklist.templateId,
-        createdById: checklist.createdById,
-        assignedToId: checklist.assignedToId,
-        items: {
-          create: checklist.items.map((item, idx) => ({
-            text: item.text,
-            priority: item.priority,
-            sortOrder: idx,
-            assignedToId: item.assignedToId,
-          })),
-        },
-      },
-    })
-
-    const fieldValues = await tx.customFieldValue.findMany({
-      where: { checklistId },
-      select: { name: true, type: true },
-    })
-    if (fieldValues.length > 0) {
-      await tx.customFieldValue.createMany({
-        data: fieldValues.map((f) => ({ checklistId: next.id, name: f.name, type: f.type, value: '' })),
-      })
-    }
+    const next = await cloneForNextRun(tx, checklist, nextDue)
 
     await tx.checklist.update({
       where: { id: checklistId },
