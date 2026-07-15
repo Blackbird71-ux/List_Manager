@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
 import { spawn } from 'child_process'
+import { copyFileSync, existsSync, unlinkSync } from 'fs'
+import { homedir } from 'os'
+import { join } from 'path'
 import { auth } from '@/lib/auth'
 
 export async function POST() {
@@ -15,6 +18,7 @@ export async function POST() {
 
     function captureUrl(data: Buffer) {
       const text = data.toString()
+      console.log('[cloudflared login]', text.trim())
       const match = text.match(/https:\/\/\S+cloudflare\S+/i)
       if (match && !url) {
         url = match[0].replace(/[.,;)\]>]+$/, '')
@@ -27,6 +31,23 @@ export async function POST() {
 
     child.stdout.on('data', captureUrl)
     child.stderr.on('data', captureUrl)
+
+    // cloudflared ignores --origincert for `tunnel login` and writes the cert
+    // to ~/.cloudflared/cert.pem, which is not on the mounted volume. Move it
+    // to /etc/cloudflared once login finishes so the wizard (and the tunnel)
+    // can find it and it survives container recreates.
+    child.on('exit', () => {
+      const homeCert = join(homedir(), '.cloudflared', 'cert.pem')
+      try {
+        if (existsSync(homeCert) && !existsSync('/etc/cloudflared/cert.pem')) {
+          copyFileSync(homeCert, '/etc/cloudflared/cert.pem')
+          unlinkSync(homeCert)
+          console.log('[cloudflared login] moved cert to /etc/cloudflared/cert.pem')
+        }
+      } catch (err) {
+        console.error('[cloudflared login] could not move cert:', err)
+      }
+    })
 
     child.on('error', () => {
       if (!resolved) {
