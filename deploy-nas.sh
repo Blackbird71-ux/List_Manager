@@ -37,7 +37,7 @@ docker run -d \
   -e DATABASE_URL=file:/data/listsmanager.db \
   -e NODE_ENV=production \
   -e TZ=Australia/Sydney \
-  -e AUTH_URL=https://lists.liddleapps.com \
+  -e APP_URL=https://lists.liddleapps.com \
   listsmanager:latest
 
 echo "=== Waiting for app to start ==="

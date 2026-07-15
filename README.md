@@ -60,8 +60,10 @@ docker compose up -d --build
 docker compose logs -f            # watch migrations + startup
 ```
 
-- App listens on host port **3002**; public URL is set by `AUTH_URL` in
-  docker-compose.yml (https://lists.liddleapps.com).
+- App listens on host port **3002**; the public URL used in password-reset
+  emails is set by `APP_URL` in docker-compose.yml / deploy-nas.sh
+  (https://lists.liddleapps.com). Do not set `AUTH_URL` — auth trusts the
+  request host, and an https `AUTH_URL` breaks login over plain-http LAN.
 - Migrations run automatically at container startup (`prisma migrate deploy`),
   with a pre-deploy DB backup kept in `/data/backups` (last 10).
 - A cron job inside the container backs up the DB daily at 03:00 (last 14 kept).

@@ -52,9 +52,11 @@ export async function POST(request: Request) {
   })
 
   // Prefer the configured public URL over request headers so a spoofed Host
-  // header can never end up in the emailed link.
+  // header can never end up in the emailed link. APP_URL, not AUTH_URL:
+  // setting an https AUTH_URL makes NextAuth issue Secure-only cookies,
+  // which browsers drop on plain-http LAN access and every login fails.
   const origin =
-    process.env.AUTH_URL?.replace(/\/$/, '') ||
+    process.env.APP_URL?.replace(/\/$/, '') ||
     request.headers.get('origin') ||
     `http://${request.headers.get('host')}`
   const link = `${origin}/reset-password?token=${token}`
