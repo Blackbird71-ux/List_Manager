@@ -121,6 +121,6 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   // Checklists keep working after template deletion (templateId is SetNull).
   await prisma.template
     .deleteMany({ where: { id, organizationId: session.user.organizationId } })
-    .catch(() => null)
+    .catch((err) => console.error('Template delete failed:', err))
   return NextResponse.json({ ok: true })
 }

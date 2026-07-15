@@ -20,11 +20,22 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
+  const [allowNewOrgs, setAllowNewOrgs] = useState(true)
 
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get('reset') === '1') {
       setNotice('Password updated — sign in with your new password.')
     }
+    // The server may not accept new organisations — if so, only offer
+    // joining with an invite code.
+    fetch('/api/register')
+      .then(async (res) => {
+        if (res.ok && (await res.json()).allowNewOrgs === false) {
+          setAllowNewOrgs(false)
+          setRegisterMode('join')
+        }
+      })
+      .catch(() => undefined)
   }, [])
 
   async function handleSubmit(e: React.FormEvent) {
@@ -77,7 +88,9 @@ export default function LoginPage() {
           <h1 className="text-xl font-semibold">Lists Manager</h1>
           {registering && (
             <p className="text-center text-sm text-muted">
-              Set up a new organisation, or join one with its invite code.
+              {allowNewOrgs
+                ? 'Set up a new organisation, or join one with its invite code.'
+                : 'Join your organisation with its invite code.'}
             </p>
           )}
         </div>
@@ -88,6 +101,7 @@ export default function LoginPage() {
         >
           {registering && (
             <>
+              {allowNewOrgs && (
               <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Registration type">
                 <button
                   type="button"
@@ -112,6 +126,7 @@ export default function LoginPage() {
                   Join with code
                 </button>
               </div>
+              )}
               {registerMode === 'create' ? (
                 <div>
                   <label className="mb-1 block text-sm font-medium text-ink">

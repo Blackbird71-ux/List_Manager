@@ -87,9 +87,69 @@ export function SettingsClient({
       <PushSection />
 
       {/* Instance-wide settings — only primary-organisation admins */}
+      {isPrimaryAdmin && <RegistrationSection />}
       {isPrimaryAdmin && <EmailSection />}
       {isPrimaryAdmin && <TunnelSection />}
     </div>
+  )
+}
+
+function RegistrationSection() {
+  const [allow, setAllow] = useState<boolean | null>(null)
+  const [status, setStatus] = useState<'idle' | 'busy' | 'error'>('idle')
+
+  useEffect(() => {
+    fetch('/api/settings/registration')
+      .then(async (res) => {
+        if (res.ok) setAllow((await res.json()).allowNewOrgs)
+      })
+      .catch(() => undefined)
+  }, [])
+
+  async function toggle() {
+    if (allow === null) return
+    const next = !allow
+    setStatus('busy')
+    const res = await fetch('/api/settings/registration', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ allowNewOrgs: next }),
+    })
+    if (res.ok) {
+      setAllow(next)
+      setStatus('idle')
+    } else {
+      setStatus('error')
+    }
+  }
+
+  if (allow === null) return null
+
+  return (
+    <section className="rounded-xl border border-border bg-panel p-5">
+      <h2 className="font-semibold">Registration</h2>
+      <p className="mt-0.5 text-sm text-muted">
+        Applies to the whole server. Joining an existing organisation with its invite code
+        always works.
+      </p>
+      <label className="mt-3 flex items-start gap-2.5">
+        <input
+          type="checkbox"
+          checked={allow}
+          onChange={toggle}
+          disabled={status === 'busy'}
+          className="mt-0.5 h-4 w-4 accent-accent"
+        />
+        <span className="text-sm">
+          <span className="font-medium text-ink">Allow new organisations</span>
+          <span className="mt-0.5 block text-xs text-muted">
+            When off, visitors can no longer create their own organisation from the sign-in
+            page — they can only join with an invite code.
+          </span>
+        </span>
+      </label>
+      {status === 'error' && <p className="mt-2 text-sm text-danger">Could not save.</p>}
+    </section>
   )
 }
 

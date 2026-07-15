@@ -2,6 +2,7 @@ import NextAuth from 'next-auth'
 import Credentials from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
+import { clientIp, rateLimit } from '@/lib/rate-limit'
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
@@ -11,8 +12,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         if (!credentials?.email || !credentials?.password) return null
+
+        // Throttle password guessing. Refusal surfaces as a failed sign-in
+        // (authorize can only return null), which is fine for this UI.
+        if (!rateLimit(`login:${clientIp(request)}`, 20, 15 * 60 * 1000)) return null
 
         // Emails are stored lowercased (see register/users routes); normalise
         // the login lookup the same way so mixed-case sign-ins still match.

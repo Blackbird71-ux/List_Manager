@@ -52,6 +52,7 @@ model DepartmentMember {
   user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([departmentId, userId])
+  @@index([userId])
 }
 
 // Which departments a "department"-visibility checklist is shown to.
@@ -63,6 +64,7 @@ model ChecklistDepartment {
   department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
 
   @@unique([checklistId, departmentId])
+  @@index([departmentId])
 }
 
 model User {
@@ -89,6 +91,8 @@ model User {
   comments          Comment[]
   pushSubscriptions PushSubscription[]
   departments       DepartmentMember[]
+
+  @@index([organizationId])
 }
 
 // A browser's Web Push subscription (one row per device/browser). Endpoint is
@@ -101,6 +105,8 @@ model PushSubscription {
   p256dh    String
   auth      String
   createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 // App-wide key/value settings (e.g. "smtp" -> JSON config), edited by admins
@@ -132,6 +138,8 @@ model Template {
   items        TemplateItem[]
   customFields CustomFieldDef[]
   checklists   Checklist[]
+
+  @@index([organizationId])
 }
 
 model TemplateItem {
@@ -141,6 +149,8 @@ model TemplateItem {
   text       String
   priority   String? // "low" | "medium" | "high"
   sortOrder  Int     @default(0)
+
+  @@index([templateId])
 }
 
 model CustomFieldDef {
@@ -152,6 +162,8 @@ model CustomFieldDef {
   options    String  @default("[]") // JSON array of strings (dropdown only)
   required   Boolean @default(true)
   sortOrder  Int     @default(0)
+
+  @@index([templateId])
 }
 
 // A working instance, optionally copied from a Template.
@@ -197,6 +209,11 @@ model Checklist {
   comments    Comment[]
   activity    ActivityLog[]
   departments ChecklistDepartment[]
+
+  @@index([organizationId, status])
+  @@index([assignedToId])
+  @@index([createdById])
+  @@index([templateId])
 }
 
 // A comment on a checklist — the conversation half of the activity feed.
@@ -239,6 +256,7 @@ model ChecklistShare {
   createdAt   DateTime  @default(now())
 
   @@unique([checklistId, userId])
+  @@index([userId])
 }
 
 model ChecklistItem {
@@ -258,6 +276,9 @@ model ChecklistItem {
   checkedAt    DateTime?
 
   attachments Attachment[]
+
+  @@index([checklistId])
+  @@index([assignedToId])
 }
 
 model CustomFieldValue {
@@ -267,6 +288,8 @@ model CustomFieldValue {
   name        String
   type        String
   value       String    @default("")
+
+  @@index([checklistId])
 }
 
 // File metadata; bytes live on disk under DATA_DIR/attachments/.
@@ -281,6 +304,8 @@ model Attachment {
   uploadedById String
   uploadedBy   User   @relation(fields: [uploadedById], references: [id])
   createdAt    DateTime @default(now())
+
+  @@index([itemId])
 }
 
 model Notification {
@@ -292,4 +317,6 @@ model Notification {
   read        Boolean  @default(false)
   checklistId String?
   createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
 }

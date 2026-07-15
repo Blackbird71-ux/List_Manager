@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getSmtpConfig, sendEmail } from '@/lib/email'
+import { clientIp, rateLimit } from '@/lib/rate-limit'
 
 const schema = z.object({
   email: z.string().trim().toLowerCase().email().max(200),
@@ -16,6 +17,12 @@ const COOLDOWN_MS = 60_000
 // entry point, used precisely when the caller cannot log in. It never reveals
 // whether an email has an account — the response is identical either way.
 export async function POST(request: Request) {
+  // Per-IP throttle on top of the per-email cooldown below, so one caller
+  // can't spray reset emails across many addresses.
+  if (!rateLimit(`pw-reset:${clientIp(request)}`, 5, 15 * 60 * 1000)) {
+    return NextResponse.json({ error: 'Too many attempts — try again later' }, { status: 429 })
+  }
+
   const body = await request.json().catch(() => null)
   const parsed = schema.safeParse(body)
   if (!parsed.success) {

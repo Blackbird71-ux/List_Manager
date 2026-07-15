@@ -57,7 +57,7 @@ export async function sendPushToUser(
           if (statusCode === 404 || statusCode === 410) {
             await prisma.pushSubscription
               .delete({ where: { id: sub.id } })
-              .catch(() => undefined)
+              .catch((err) => console.error('Stale push subscription cleanup failed:', err))
           } else {
             console.error('Web push failed:', err)
           }

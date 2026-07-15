@@ -40,9 +40,13 @@ npx prisma migrate dev
 npm run dev                        # http://localhost:3400
 ```
 
-The first visit shows a **Create admin account** form (registration is open only
-while the database has zero users). After that, the admin adds accounts from the
-Users page.
+Registration is open: the first visit creates your organisation (you become its
+admin — the first organisation on an install is the *primary* one, whose admins
+manage instance-wide settings like email and the tunnel). Everyone else either
+joins with the invite code shown to admins under Settings → Organisation, or
+founds their own organisation — a primary-org admin can switch off new
+organisations under Settings → Registration. Admins can also add accounts
+directly from the Users page.
 
 Checks: `npm run lint` (tsc), `npm run test` (vitest), `npm run build`.
 

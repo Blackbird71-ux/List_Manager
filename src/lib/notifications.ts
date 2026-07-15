@@ -11,5 +11,7 @@ export async function notify(
     data: { userId, title, body, checklistId },
   })
   // Fire-and-forget: a push failure must never break the caller.
-  void sendPushToUser(userId, { title, body, checklistId }).catch(() => undefined)
+  void sendPushToUser(userId, { title, body, checklistId }).catch((err) =>
+    console.error('Push notification failed:', err)
+  )
 }

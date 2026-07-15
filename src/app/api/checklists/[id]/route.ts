@@ -233,6 +233,9 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   if (!allowed) {
     return NextResponse.json({ error: 'Only the creator or a manager can delete this' }, { status: 403 })
   }
-  await prisma.checklist.delete({ where: { id } }).catch(() => null)
+  // Idempotent: a concurrent delete is fine, but log anything else.
+  await prisma.checklist
+    .delete({ where: { id } })
+    .catch((err) => console.error('Checklist delete failed:', err))
   return NextResponse.json({ ok: true })
 }

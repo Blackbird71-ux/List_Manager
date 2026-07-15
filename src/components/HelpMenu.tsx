@@ -165,6 +165,12 @@ function topicsFor(pathname: string): { heading: string; topics: HelpTopic[] } {
           ],
         },
         {
+          title: 'Registration (admins)',
+          points: [
+            'The Registration section controls whether visitors can create brand-new organisations on this server. Joining with an invite code always works.',
+          ],
+        },
+        {
           title: 'Email (admins)',
           points: [
             'The Email section powers "Forgot password?" reset links. For Gmail, create an app password at myaccount.google.com/apppasswords and use that — never your real password.',

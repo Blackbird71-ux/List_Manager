@@ -122,7 +122,9 @@ export async function DELETE(
     select: { id: true, text: true },
   })
   if (item) {
-    await prisma.checklistItem.delete({ where: { id: item.id } }).catch(() => null)
+    await prisma.checklistItem
+      .delete({ where: { id: item.id } })
+      .catch((err) => console.error('Checklist item delete failed:', err))
     logActivity(id, session.user.name, 'item_removed', item.text)
   }
   return NextResponse.json({ ok: true })

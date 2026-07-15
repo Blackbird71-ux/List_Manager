@@ -25,5 +25,10 @@ export function attachmentFilePath(storagePath: string): string {
 }
 
 export async function deleteAttachmentFile(storagePath: string): Promise<void> {
-  await unlink(attachmentFilePath(storagePath)).catch(() => undefined)
+  await unlink(attachmentFilePath(storagePath)).catch((err) => {
+    // Already-gone is fine (delete is idempotent); anything else is worth noting.
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      console.error('Attachment file delete failed:', err)
+    }
+  })
 }

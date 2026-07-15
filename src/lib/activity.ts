@@ -2,7 +2,7 @@ import { prisma } from '@/lib/prisma'
 
 /**
  * Fire-and-forget audit trail entry. A logging failure must never break
- * the request that triggered it, so errors are swallowed.
+ * the request that triggered it, so errors are logged but never thrown.
  */
 export function logActivity(
   checklistId: string,
@@ -12,5 +12,5 @@ export function logActivity(
 ): void {
   prisma.activityLog
     .create({ data: { checklistId, actorName, action, detail } })
-    .catch(() => {})
+    .catch((err) => console.error('Activity log write failed:', err))
 }

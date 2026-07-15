@@ -86,6 +86,6 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   const { id } = await params
   await prisma.department
     .deleteMany({ where: { id, organizationId: session.user.organizationId } })
-    .catch(() => null)
+    .catch((err) => console.error('Department delete failed:', err))
   return NextResponse.json({ ok: true })
 }

@@ -3,6 +3,8 @@ import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { randomBytes } from 'crypto'
 import { prisma } from '@/lib/prisma'
+import { clientIp, rateLimit } from '@/lib/rate-limit'
+import { newOrgsAllowed } from '@/lib/registration'
 
 const schema = z
   .object({
@@ -22,6 +24,10 @@ const schema = z
 // creates a new organisation with this user as its admin; registering with
 // an invite code joins that organisation as a member.
 export async function POST(request: Request) {
+  if (!rateLimit(`register:${clientIp(request)}`, 10, 60 * 60 * 1000)) {
+    return NextResponse.json({ error: 'Too many attempts — try again later' }, { status: 429 })
+  }
+
   const body = await request.json().catch(() => null)
   const parsed = schema.safeParse(body)
   if (!parsed.success) {
@@ -54,7 +60,14 @@ export async function POST(request: Request) {
 
   // Create a new organisation; the first organisation on this install is
   // primary (its admins manage instance-level settings like email/tunnel).
+  // Bootstrap (zero organisations) always works, even with the toggle off.
   const orgCount = await prisma.organization.count()
+  if (orgCount > 0 && !(await newOrgsAllowed())) {
+    return NextResponse.json(
+      { error: 'New organisations are not accepted on this server. Join with an invite code instead.' },
+      { status: 403 }
+    )
+  }
   const user = await prisma.$transaction(async (tx) => {
     const org = await tx.organization.create({
       data: {
@@ -72,7 +85,7 @@ export async function POST(request: Request) {
   return NextResponse.json({ user }, { status: 201 })
 }
 
-// Lets the login page decide whether to show the registration form.
+// Lets the login page decide which registration options to offer.
 export async function GET() {
-  return NextResponse.json({ open: true })
+  return NextResponse.json({ open: true, allowNewOrgs: await newOrgsAllowed() })
 }

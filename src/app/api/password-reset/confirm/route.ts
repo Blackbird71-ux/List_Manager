@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
+import { clientIp, rateLimit } from '@/lib/rate-limit'
 
 const schema = z.object({
   token: z.string().min(32).max(200),
@@ -12,6 +13,12 @@ const schema = z.object({
 // Deliberately public (with user sign-off): the caller proves identity with
 // the one-time token from the reset email, not a session.
 export async function POST(request: Request) {
+  // Throttle token guessing (the token is unguessable anyway, but cheap belt
+  // and braces).
+  if (!rateLimit(`pw-confirm:${clientIp(request)}`, 10, 15 * 60 * 1000)) {
+    return NextResponse.json({ error: 'Too many attempts — try again later' }, { status: 429 })
+  }
+
   const body = await request.json().catch(() => null)
   const parsed = schema.safeParse(body)
   if (!parsed.success) {
