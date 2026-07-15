@@ -95,10 +95,11 @@ export function EmailSection() {
           </div>
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium">Username (email address)</label>
+          <label className="mb-1 block text-sm font-medium">Username</label>
           <input
-            type="email"
+            type="text"
             value={user}
+            placeholder="whatever your mail provider requires — often an email address"
             onChange={(e) => setUser(e.target.value)}
             required
             className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm focus:border-accent focus:outline-none"
