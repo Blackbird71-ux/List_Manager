@@ -194,7 +194,9 @@ export function TunnelSection() {
       const res = await fetch('/api/tunnel/restart', { method: 'POST' })
       const data = await res.json().catch(() => null)
       if (!res.ok) { setError(data?.error ?? 'Something went wrong'); return }
-      setRestartDone(true)
+      // Only trust the restart if the server saw a live connection — otherwise
+      // keep showing the real status so a failed start isn't painted green.
+      setRestartDone(Boolean(data?.running))
       await fetchStatus()
     } catch {
       setError('Network error')

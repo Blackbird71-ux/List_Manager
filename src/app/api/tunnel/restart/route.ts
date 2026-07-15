@@ -1,14 +1,19 @@
 import { NextResponse } from 'next/server'
+import { spawn } from 'child_process'
+import { existsSync } from 'fs'
 import { auth } from '@/lib/auth'
-import { inContainer, findCloudflaredPid, queryReady } from '@/lib/tunnel-health'
+import { inContainer, findCloudflaredPid, queryReady, METRICS_HOST, METRICS_PORT } from '@/lib/tunnel-health'
 
 export const dynamic = 'force-dynamic'
 
 /**
- * Restart the in-process tunnel by terminating the cloudflared process.
- * The supervisor loop in docker/entrypoint.sh respawns it within ~5 seconds —
- * we must NOT spawn our own cloudflared here, or two instances would run (the
- * supervisor would start one too). Just signal the PID and let it come back.
+ * Restart the in-process tunnel by terminating the cloudflared process; the
+ * supervisor loop in docker/entrypoint.sh respawns it within ~5 seconds.
+ *
+ * If no cloudflared is running at all, start one ourselves: the supervisor
+ * only exists when config.yml was present at container boot, so on a
+ * first-time wizard setup (config written after boot) there is no supervisor
+ * and nothing would ever start the tunnel.
  */
 export async function POST() {
   const session = await auth()
@@ -24,10 +29,29 @@ export async function POST() {
 
   const pid = await findCloudflaredPid()
   if (pid === null) {
+    if (!existsSync('/etc/cloudflared/config.yml')) {
+      return NextResponse.json({ error: 'Tunnel is not configured yet — finish the steps above first.' }, { status: 400 })
+    }
+    // First-time start (no supervisor). Detach so it outlives this request;
+    // stdio inherit so cloudflared's logs land in the container logs. After
+    // the next container restart the entrypoint supervisor takes over.
+    const child = spawn('cloudflared', [
+      'tunnel', '--no-autoupdate',
+      '--metrics', `${METRICS_HOST}:${METRICS_PORT}`,
+      '--config', '/etc/cloudflared/config.yml',
+      'run',
+    ], { detached: true, stdio: 'inherit' })
+    child.unref()
+
+    await new Promise((r) => setTimeout(r, 8000))
+    const started = await queryReady()
     return NextResponse.json({
       ok: true,
-      message: 'cloudflared was not running; the supervisor will start it within ~5s.',
-      running: false,
+      message: started.ready
+        ? 'Tunnel started and connected to Cloudflare.'
+        : 'Tunnel starting — refresh in a few seconds. (It becomes supervised after the next container restart.)',
+      running: started.ready,
+      readyConnections: started.readyConnections,
     })
   }
 

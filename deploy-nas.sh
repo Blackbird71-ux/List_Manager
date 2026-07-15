@@ -30,6 +30,8 @@ docker run -d \
   --name listsmanager-app \
   --restart unless-stopped \
   --network listsmanager-network \
+  --dns 1.1.1.1 \
+  --dns 8.8.8.8 \
   -p 3002:3000 \
   -v /volume1/docker/listsmanager/Data:/data \
   -v /volume1/docker/listsmanager/cloudflared:/etc/cloudflared \
