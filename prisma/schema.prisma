@@ -29,6 +29,19 @@ model User {
   attachments       Attachment[]
   checklistShares   ChecklistShare[]
   comments          Comment[]
+  pushSubscriptions PushSubscription[]
+}
+
+// A browser's Web Push subscription (one row per device/browser). Endpoint is
+// unique so re-subscribing the same browser updates rather than duplicates.
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
 }
 
 // App-wide key/value settings (e.g. "smtp" -> JSON config), edited by admins
@@ -170,6 +183,7 @@ model ChecklistItem {
   checked     Boolean   @default(false)
   notes       String    @default("")
   priority    String?
+  dueDate     DateTime?
   sortOrder   Int       @default(0)
 
   assignedToId String?
