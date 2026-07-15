@@ -16,7 +16,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
   const { id } = await params
   const checklist = await prisma.checklist.findFirst({
-    where: { id, ...checklistAccessWhere(session.user.id, session.user.role) },
+    where: { id, ...checklistAccessWhere(session.user.id, session.user.role, session.user.organizationId) },
     include: getChecklistInclude(),
   })
   if (!checklist) {
@@ -34,7 +34,8 @@ const patchSchema = z.object({
   dueDate: z.iso.datetime().nullish(),
   assignedToId: z.string().nullish(),
   status: z.enum(['active', 'completed']).optional(),
-  visibility: z.enum(['team', 'private']).optional(),
+  visibility: z.enum(['team', 'private', 'department']).optional(),
+  departmentIds: z.array(z.string().min(1)).max(50).optional(),
   sharedUserIds: z.array(z.string().min(1)).max(100).optional(),
   fieldValues: z
     .array(z.object({ id: z.string().min(1), value: z.string().max(2000) }))
@@ -55,22 +56,60 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   const existing = await prisma.checklist.findFirst({
-    where: { id, ...checklistAccessWhere(session.user.id, session.user.role) },
+    where: { id, ...checklistAccessWhere(session.user.id, session.user.role, session.user.organizationId) },
     select: { id: true, status: true, assignedToId: true, title: true },
   })
   if (!existing) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  const { status, fieldValues, dueDate, assignedToId, visibility, sharedUserIds, ...scalars } =
-    parsed.data
+  const {
+    status,
+    fieldValues,
+    dueDate,
+    assignedToId,
+    visibility,
+    departmentIds,
+    sharedUserIds,
+    ...scalars
+  } = parsed.data
 
   // Visibility and sharing are managed by the creator, managers and admins.
-  if (visibility !== undefined || sharedUserIds !== undefined) {
-    const allowed = await canManageChecklist(id, session.user.id, session.user.role)
+  if (visibility !== undefined || departmentIds !== undefined || sharedUserIds !== undefined) {
+    const allowed = await canManageChecklist(id, session.user.id, session.user.role, session.user.organizationId)
     if (!allowed) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
+  }
+
+  // A newly assigned user must belong to the same organisation.
+  if (assignedToId) {
+    const assignee = await prisma.user.findFirst({
+      where: { id: assignedToId, organizationId: session.user.organizationId },
+      select: { id: true },
+    })
+    if (!assignee) {
+      return NextResponse.json({ error: 'Assignee not found' }, { status: 400 })
+    }
+  }
+
+  if (visibility === 'department' || departmentIds !== undefined) {
+    const wanted = departmentIds ?? []
+    if (visibility === 'department' && wanted.length === 0) {
+      return NextResponse.json({ error: 'Choose at least one department' }, { status: 400 })
+    }
+    const count = await prisma.department.count({
+      where: { id: { in: wanted }, organizationId: session.user.organizationId },
+    })
+    if (count !== wanted.length) {
+      return NextResponse.json({ error: 'Department not found' }, { status: 400 })
+    }
+    await prisma.$transaction([
+      prisma.checklistDepartment.deleteMany({ where: { checklistId: id } }),
+      prisma.checklistDepartment.createMany({
+        data: wanted.map((departmentId) => ({ checklistId: id, departmentId })),
+      }),
+    ])
   }
 
   const data: Record<string, unknown> = { ...scalars }
@@ -98,7 +137,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       select: { userId: true },
     })
     const validUsers = await prisma.user.findMany({
-      where: { id: { in: sharedUserIds } },
+      where: { id: { in: sharedUserIds }, organizationId: session.user.organizationId },
       select: { id: true },
     })
     const wanted = validUsers.map((u) => u.id).filter((uid) => uid !== session.user.id)
@@ -186,11 +225,11 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   }
 
   const { id } = await params
-  const canView = await canAccessChecklist(id, session.user.id, session.user.role)
+  const canView = await canAccessChecklist(id, session.user.id, session.user.role, session.user.organizationId)
   if (!canView) {
     return NextResponse.json({ ok: true }) // hidden lists 404 the same as missing ones
   }
-  const allowed = await canManageChecklist(id, session.user.id, session.user.role)
+  const allowed = await canManageChecklist(id, session.user.id, session.user.role, session.user.organizationId)
   if (!allowed) {
     return NextResponse.json({ error: 'Only the creator or a manager can delete this' }, { status: 403 })
   }

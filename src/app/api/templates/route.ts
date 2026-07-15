@@ -21,7 +21,10 @@ export async function GET(request: Request) {
   const includeArchived = searchParams.get('archived') === 'true'
 
   const templates = await prisma.template.findMany({
-    where: includeArchived ? {} : { archived: false },
+    where: {
+      organizationId: session.user.organizationId,
+      ...(includeArchived ? {} : { archived: false }),
+    },
     include: templateInclude,
     orderBy: { title: 'asc' },
   })
@@ -68,6 +71,7 @@ export async function POST(request: Request) {
       description,
       category: category || 'general',
       recurrence,
+      organizationId: session.user.organizationId,
       createdById: session.user.id,
       items: {
         create: items.map((item, idx) => ({

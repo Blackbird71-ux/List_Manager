@@ -19,6 +19,7 @@ const checklistInclude = {
   createdBy: { select: { id: true, name: true, email: true } },
   template: { select: { id: true, title: true } },
   shares: { select: { user: { select: { id: true, name: true, email: true } } } },
+  departments: { select: { department: { select: { id: true, name: true } } } },
 }
 
 export function getChecklistInclude() {
@@ -31,21 +32,29 @@ export function getChecklistInclude() {
  */
 export async function createChecklistFromTemplate(params: {
   templateId: string
+  organizationId: string
   createdById: string
   title?: string
   dueDate?: Date | null
   assignedToId?: string | null
   priority?: string
   visibility?: string
+  departmentIds?: string[]
 }) {
-  const template = await prisma.template.findUnique({
-    where: { id: params.templateId },
+  const template = await prisma.template.findFirst({
+    where: { id: params.templateId, organizationId: params.organizationId },
     include: {
       items: { orderBy: { sortOrder: 'asc' } },
       customFields: { orderBy: { sortOrder: 'asc' } },
     },
   })
   if (!template) return null
+
+  const visibility =
+    params.visibility === 'private' || params.visibility === 'department'
+      ? params.visibility
+      : 'team'
+  const departmentIds = visibility === 'department' ? (params.departmentIds ?? []) : []
 
   const checklist = await prisma.checklist.create({
     data: {
@@ -54,12 +63,16 @@ export async function createChecklistFromTemplate(params: {
       category: template.category,
       recurrence: template.recurrence,
       priority: params.priority ?? 'medium',
-      visibility: params.visibility === 'private' ? 'private' : 'team',
+      visibility,
       dueDate: params.dueDate ?? null,
       templateId: template.id,
       templateVersion: template.version,
+      organizationId: params.organizationId,
       createdById: params.createdById,
       assignedToId: params.assignedToId ?? null,
+      departments: {
+        create: departmentIds.map((departmentId) => ({ departmentId })),
+      },
       items: {
         create: template.items.map((item, idx) => ({
           text: item.text,
@@ -102,6 +115,7 @@ interface CloneSource {
   visibility: string
   templateId: string | null
   templateVersion: number | null
+  organizationId: string
   createdById: string
   assignedToId: string | null
   items: { text: string; priority: string | null; assignedToId: string | null }[]
@@ -130,6 +144,7 @@ async function cloneForNextRun(
       templateId: source.templateId,
       // The clone copies the source's items, so it ran from the same version.
       templateVersion: source.templateVersion,
+      organizationId: source.organizationId,
       createdById: source.createdById,
       assignedToId: source.assignedToId,
       items: {
@@ -161,6 +176,17 @@ async function cloneForNextRun(
   if (shares.length > 0) {
     await tx.checklistShare.createMany({
       data: shares.map((s) => ({ checklistId: next.id, userId: s.userId })),
+    })
+  }
+
+  // Department visibility carries over to the next run too.
+  const departments = await tx.checklistDepartment.findMany({
+    where: { checklistId: source.id },
+    select: { departmentId: true },
+  })
+  if (departments.length > 0) {
+    await tx.checklistDepartment.createMany({
+      data: departments.map((d) => ({ checklistId: next.id, departmentId: d.departmentId })),
     })
   }
 

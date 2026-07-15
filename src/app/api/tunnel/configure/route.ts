@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { execSync } from 'child_process'
 import { writeFileSync } from 'fs'
 import { auth } from '@/lib/auth'
+import { isPrimaryOrgAdmin } from '@/lib/access'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const HOSTNAME_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i
@@ -9,7 +10,8 @@ const HOSTNAME_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9
 export async function POST(request: Request) {
   const session = await auth()
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (session.user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await isPrimaryOrgAdmin(session.user.role, session.user.organizationId)))
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await request.json().catch(() => null)
   const tunnelId = body?.tunnelId

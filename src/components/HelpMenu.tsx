@@ -56,8 +56,30 @@ function topicsFor(pathname: string): { heading: string; topics: HelpTopic[] } {
         {
           title: 'Visibility & sharing',
           points: [
-            'Team checklists are visible to everyone; private ones only to you, assignees and people you share with.',
+            'Team checklists are visible to everyone in your organisation; department ones only to members of the chosen departments; private ones only to you, assignees and people you share with.',
             'Managers and admins can always see every checklist.',
+          ],
+        },
+      ],
+    }
+  }
+  if (pathname.startsWith('/my-team')) {
+    return {
+      heading: 'My Team',
+      topics: [
+        {
+          title: 'What this page shows',
+          points: [
+            'Active checklists and items assigned to anyone in your department(s), grouped by person.',
+            'Overdue work is flagged in red so you can see who needs a hand.',
+            'You only see checklists you have access to — private lists stay private.',
+          ],
+        },
+        {
+          title: 'Departments',
+          points: [
+            'Admins set up departments and their members on the Users page.',
+            'If this page says you\'re not in a department, ask an admin to add you.',
           ],
         },
       ],
@@ -136,6 +158,13 @@ function topicsFor(pathname: string): { heading: string; topics: HelpTopic[] } {
           ],
         },
         {
+          title: 'Organisation',
+          points: [
+            'Admins can rename the organisation and see its invite code here.',
+            'Give the invite code to new people — they pick "Join with code" when registering. Regenerate it if it leaks.',
+          ],
+        },
+        {
           title: 'Email (admins)',
           points: [
             'The Email section powers "Forgot password?" reset links. For Gmail, create an app password at myaccount.google.com/apppasswords and use that — never your real password.',
@@ -159,9 +188,17 @@ function topicsFor(pathname: string): { heading: string; topics: HelpTopic[] } {
         {
           title: 'Roles',
           points: [
-            'Member: sees team checklists plus anything private they created, were assigned or had shared with them.',
+            'Member: sees team checklists, department checklists for their departments, plus anything private they created, were assigned or had shared with them.',
             'Manager: sees every checklist (including private ones) and the reports page.',
             'Admin: everything a manager has, plus user management and the remote-access tunnel.',
+          ],
+        },
+        {
+          title: 'Departments',
+          points: [
+            'Departments group people so checklists can be limited to just the right team — set "Department" visibility on a checklist.',
+            'People can belong to several departments, and the My Team page shows colleagues\' active work.',
+            'Deleting a department leaves its checklists visible only to their creator, assignees and managers.',
           ],
         },
         {
@@ -188,7 +225,7 @@ function topicsFor(pathname: string): { heading: string; topics: HelpTopic[] } {
         title: 'Creating checklists',
         points: [
           'Start from a template (the master stays untouched) or build a one-off list from scratch.',
-          'Assign it, set a due date and priority, and choose team or private visibility.',
+          'Assign it, set a due date and priority, and choose team, department or private visibility.',
         ],
       },
       {

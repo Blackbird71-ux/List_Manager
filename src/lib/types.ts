@@ -6,6 +6,13 @@ export interface ApiUser {
   email: string
   role: string
   createdAt?: string
+  departments?: { department: { id: string; name: string } }[]
+}
+
+export interface ApiDepartment {
+  id: string
+  name: string
+  members: { user: { id: string; name: string } }[]
 }
 
 export interface ApiUserRef {
@@ -84,7 +91,7 @@ export interface ApiChecklist {
   dueDate: string | null
   completedAt: string | null
   nextInstanceId: string | null
-  visibility: string // "team" | "private"
+  visibility: string // "team" | "department" | "private"
   createdAt: string
   items: ApiChecklistItem[]
   fieldValues: ApiCustomFieldValue[]
@@ -93,6 +100,7 @@ export interface ApiChecklist {
   template: { id: string; title: string } | null
   templateVersion: number | null
   shares: { user: ApiUserRef }[]
+  departments?: { department: { id: string; name: string } }[]
 }
 
 export interface ApiComment {

@@ -26,6 +26,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
+  // Admins only ever manage users of their own organisation.
+  const target = await prisma.user.findFirst({
+    where: { id, organizationId: session.user.organizationId },
+    select: { role: true },
+  })
+  if (!target) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
   const body = await request.json().catch(() => null)
   const parsed = patchSchema.safeParse(body)
   if (!parsed.success) {
@@ -48,12 +57,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
   }
 
-  // Don't let the last admin demote themselves and lock everyone out.
+  // Don't let the last admin of the organisation be demoted and lock it out.
   if (parsed.data.role !== undefined && parsed.data.role !== 'admin') {
-    const adminCount = await prisma.user.count({ where: { role: 'admin' } })
-    const target = await prisma.user.findUnique({ where: { id }, select: { role: true } })
-    if (target?.role === 'admin' && adminCount <= 1) {
-      return NextResponse.json({ error: 'Cannot demote the last admin' }, { status: 400 })
+    const adminCount = await prisma.user.count({
+      where: { role: 'admin', organizationId: session.user.organizationId },
+    })
+    if (target.role === 'admin' && adminCount <= 1) {
+      return NextResponse.json(
+        { error: 'Cannot demote the last admin. Promote someone else to admin first.' },
+        { status: 400 }
+      )
     }
   }
 
@@ -83,6 +96,14 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   const { id } = await params
   if (id === session.user.id) {
     return NextResponse.json({ error: 'You cannot delete your own account' }, { status: 400 })
+  }
+
+  const target = await prisma.user.findFirst({
+    where: { id, organizationId: session.user.organizationId },
+    select: { id: true },
+  })
+  if (!target) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
   try {

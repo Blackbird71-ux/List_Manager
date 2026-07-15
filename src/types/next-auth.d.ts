@@ -7,10 +7,12 @@ declare module 'next-auth' {
       email: string
       name: string
       role: string
+      organizationId: string
     }
   }
 
   interface User {
     role?: string
+    organizationId?: string
   }
 }

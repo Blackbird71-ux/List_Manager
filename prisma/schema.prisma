@@ -9,13 +9,71 @@ datasource db {
   provider = "sqlite"
 }
 
+// A tenant: a company or family. All users and their data belong to exactly
+// one organisation and nothing is ever visible across the boundary.
+model Organization {
+  id         String   @id @default(cuid())
+  name       String
+  // Shared with colleagues so they can join this org at registration.
+  inviteCode String   @unique
+  // The org created when the instance was first set up. Its admins manage
+  // instance-level settings (email server, remote-access tunnel).
+  isPrimary  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  users       User[]
+  departments Department[]
+  templates   Template[]
+  checklists  Checklist[]
+}
+
+// A group of users within an organisation (e.g. "Finance", "Operations").
+// Checklists with visibility "department" are visible to members of any of
+// the checklist's departments.
+model Department {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  createdAt      DateTime     @default(now())
+
+  members    DepartmentMember[]
+  checklists ChecklistDepartment[]
+
+  @@unique([organizationId, name])
+}
+
+// Users can belong to any number of departments.
+model DepartmentMember {
+  id           String     @id @default(cuid())
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([departmentId, userId])
+}
+
+// Which departments a "department"-visibility checklist is shown to.
+model ChecklistDepartment {
+  id           String     @id @default(cuid())
+  checklistId  String
+  checklist    Checklist  @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@unique([checklistId, departmentId])
+}
+
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String
-  password  String // bcrypt hash
-  role      String   @default("member") // "admin" | "manager" | "member"
-  createdAt DateTime @default(now())
+  id             String       @id @default(cuid())
+  email          String       @unique
+  name           String
+  password       String // bcrypt hash
+  role           String       @default("member") // "admin" | "manager" | "member"
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
 
   // Self-service password reset: sha256 of the emailed one-time token.
   resetTokenHash      String?
@@ -30,6 +88,7 @@ model User {
   checklistShares   ChecklistShare[]
   comments          Comment[]
   pushSubscriptions PushSubscription[]
+  departments       DepartmentMember[]
 }
 
 // A browser's Web Push subscription (one row per device/browser). Endpoint is
@@ -63,6 +122,8 @@ model Template {
   // Bumped whenever the template's items or fields are edited, so completed
   // checklists can show which version of the template they ran from.
   version     Int      @default(1)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
   createdById String
   createdBy   User     @relation("TemplateCreator", fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
@@ -100,7 +161,8 @@ model Checklist {
   description String    @default("")
   category    String    @default("general")
   status      String    @default("active") // "active" | "completed"
-  // "team": every signed-in user can see and work on it.
+  // "team": everyone in the organisation can see and work on it.
+  // "department": members of the checklist's departments (see departments below).
   // "private": creator, assignees, shared users, managers and admins only.
   visibility  String    @default("team")
   priority    String    @default("medium") // "low" | "medium" | "high"
@@ -118,6 +180,9 @@ model Checklist {
   // double-spawn guard (spawn only if null).
   nextInstanceId String? @unique
 
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
   createdById  String
   createdBy    User    @relation("ChecklistCreator", fields: [createdById], references: [id])
   assignedToId String?
@@ -131,6 +196,7 @@ model Checklist {
   shares      ChecklistShare[]
   comments    Comment[]
   activity    ActivityLog[]
+  departments ChecklistDepartment[]
 }
 
 // A comment on a checklist — the conversation half of the activity feed.

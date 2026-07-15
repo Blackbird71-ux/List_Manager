@@ -35,12 +35,23 @@ export async function PATCH(
     where: {
       id: itemId,
       checklistId: id,
-      checklist: checklistAccessWhere(session.user.id, session.user.role),
+      checklist: checklistAccessWhere(session.user.id, session.user.role, session.user.organizationId),
     },
     select: { id: true, checked: true },
   })
   if (!item) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
+  // An item assignee must belong to the same organisation.
+  if (parsed.data.assignedToId) {
+    const assignee = await prisma.user.findFirst({
+      where: { id: parsed.data.assignedToId, organizationId: session.user.organizationId },
+      select: { id: true },
+    })
+    if (!assignee) {
+      return NextResponse.json({ error: 'Assignee not found' }, { status: 400 })
+    }
   }
 
   const { checked, priority, dueDate, assignedToId, ...scalars } = parsed.data
@@ -106,7 +117,7 @@ export async function DELETE(
     where: {
       id: itemId,
       checklistId: id,
-      checklist: checklistAccessWhere(session.user.id, session.user.role),
+      checklist: checklistAccessWhere(session.user.id, session.user.role, session.user.organizationId),
     },
     select: { id: true, text: true },
   })

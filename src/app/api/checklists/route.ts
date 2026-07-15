@@ -29,7 +29,7 @@ export async function GET(request: Request) {
 
   const where = {
     AND: [
-      checklistAccessWhere(session.user.id, session.user.role),
+      checklistAccessWhere(session.user.id, session.user.role, session.user.organizationId),
       {
         ...(status ? { status } : {}),
         ...(category ? { category } : {}),
@@ -72,7 +72,8 @@ const fromTemplateSchema = z.object({
   dueDate: z.iso.datetime().nullish(),
   assignedToId: z.string().nullish(),
   priority: z.enum(['low', 'medium', 'high']).optional(),
-  visibility: z.enum(['team', 'private']).optional(),
+  visibility: z.enum(['team', 'private', 'department']).optional(),
+  departmentIds: z.array(z.string().min(1)).max(50).default([]),
 })
 
 const adHocSchema = z.object({
@@ -82,11 +83,40 @@ const adHocSchema = z.object({
   category: z.string().trim().max(100).default('general'),
   recurrence: z.enum(RECURRENCE_OPTIONS).default('none'),
   priority: z.enum(['low', 'medium', 'high']).default('medium'),
-  visibility: z.enum(['team', 'private']).default('team'),
+  visibility: z.enum(['team', 'private', 'department']).default('team'),
+  departmentIds: z.array(z.string().min(1)).max(50).default([]),
   dueDate: z.iso.datetime().nullish(),
   assignedToId: z.string().nullish(),
   items: z.array(z.object({ text: z.string().trim().min(1).max(500) })).default([]),
 })
+
+/**
+ * Cross-org guardrails for create input: the assignee must be a member of
+ * the caller's organisation, and department visibility must name at least
+ * one department that all belong to it. Returns an error message or null.
+ */
+async function validateCreateRefs(
+  organizationId: string,
+  assignedToId: string | null | undefined,
+  visibility: string | undefined,
+  departmentIds: string[]
+): Promise<string | null> {
+  if (assignedToId) {
+    const assignee = await prisma.user.findFirst({
+      where: { id: assignedToId, organizationId },
+      select: { id: true },
+    })
+    if (!assignee) return 'Assignee not found'
+  }
+  if (visibility === 'department') {
+    if (departmentIds.length === 0) return 'Choose at least one department'
+    const count = await prisma.department.count({
+      where: { id: { in: departmentIds }, organizationId },
+    })
+    if (count !== departmentIds.length) return 'Department not found'
+  }
+  return null
+}
 
 // Create a checklist: from a template (master untouched) or ad hoc.
 export async function POST(request: Request) {
@@ -105,14 +135,25 @@ export async function POST(request: Request) {
     if (!parsed.success) {
       return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
     }
+    const refError = await validateCreateRefs(
+      session.user.organizationId,
+      parsed.data.assignedToId,
+      parsed.data.visibility,
+      parsed.data.departmentIds
+    )
+    if (refError) {
+      return NextResponse.json({ error: refError }, { status: 400 })
+    }
     const checklist = await createChecklistFromTemplate({
       templateId: parsed.data.templateId,
+      organizationId: session.user.organizationId,
       createdById: session.user.id,
       title: parsed.data.title,
       dueDate: parsed.data.dueDate ? new Date(parsed.data.dueDate) : null,
       assignedToId: parsed.data.assignedToId ?? null,
       priority: parsed.data.priority,
       visibility: parsed.data.visibility,
+      departmentIds: parsed.data.visibility === 'department' ? parsed.data.departmentIds : [],
     })
     if (!checklist) {
       return NextResponse.json({ error: 'Template not found' }, { status: 404 })
@@ -126,6 +167,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
   }
   const data = parsed.data
+  const refError = await validateCreateRefs(
+    session.user.organizationId,
+    data.assignedToId,
+    data.visibility,
+    data.departmentIds
+  )
+  if (refError) {
+    return NextResponse.json({ error: refError }, { status: 400 })
+  }
   const checklist = await prisma.checklist.create({
     data: {
       title: data.title,
@@ -135,11 +185,15 @@ export async function POST(request: Request) {
       priority: data.priority,
       visibility: data.visibility,
       dueDate: data.dueDate ? new Date(data.dueDate) : null,
+      organizationId: session.user.organizationId,
       createdById: session.user.id,
       assignedToId: data.assignedToId ?? null,
       items: {
         create: data.items.map((item, idx) => ({ text: item.text, sortOrder: idx })),
       },
+      ...(data.visibility === 'department' && data.departmentIds.length > 0
+        ? { departments: { create: data.departmentIds.map((departmentId) => ({ departmentId })) } }
+        : {}),
     },
     include: getChecklistInclude(),
   })

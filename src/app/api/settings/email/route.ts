@@ -3,13 +3,15 @@ import { z } from 'zod'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getSmtpConfig, smtpSchema } from '@/lib/email'
+import { isPrimaryOrgAdmin } from '@/lib/access'
 
+// SMTP config is instance-wide, so it belongs to the primary org's admins.
 async function requireAdmin() {
   const session = await auth()
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (session.user.role !== 'admin') {
+  if (!(await isPrimaryOrgAdmin(session.user.role, session.user.organizationId))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
   return null

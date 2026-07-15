@@ -29,9 +29,11 @@ export async function GET(request: Request) {
   const now = new Date()
   const since = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
 
+  const organizationId = session.user.organizationId
   const [checklists, checkedItems, users] = await Promise.all([
     prisma.checklist.findMany({
       where: {
+        organizationId,
         OR: [{ status: 'active' }, { status: 'completed', completedAt: { gte: since } }],
       },
       select: {
@@ -45,10 +47,14 @@ export async function GET(request: Request) {
       },
     }),
     prisma.checklistItem.findMany({
-      where: { checked: true, checkedAt: { gte: since } },
+      where: { checked: true, checkedAt: { gte: since }, checklist: { organizationId } },
       select: { checkedByName: true },
     }),
-    prisma.user.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+    prisma.user.findMany({
+      where: { organizationId },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    }),
   ])
 
   const active = checklists.filter((c) => c.status === 'active')

@@ -20,7 +20,7 @@ export async function GET() {
   }
 
   const templates = await prisma.template.findMany({
-    where: { archived: false },
+    where: { archived: false, organizationId: session.user.organizationId },
     include: {
       items: { orderBy: { sortOrder: 'asc' } },
       customFields: { orderBy: { sortOrder: 'asc' } },

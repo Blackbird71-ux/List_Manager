@@ -56,6 +56,7 @@ export async function POST(request: Request) {
           recurrence: t.recurrence,
           version: 1,
           archived: false,
+          organizationId: session.user.organizationId,
           createdById: session.user.id,
           items: {
             create: [...t.items]

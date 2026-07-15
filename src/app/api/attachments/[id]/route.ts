@@ -15,7 +15,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const attachment = await prisma.attachment.findFirst({
     where: {
       id,
-      item: { checklist: checklistAccessWhere(session.user.id, session.user.role) },
+      item: { checklist: checklistAccessWhere(session.user.id, session.user.role, session.user.organizationId) },
     },
   })
   if (!attachment) {
@@ -48,7 +48,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   const attachment = await prisma.attachment.findFirst({
     where: {
       id,
-      item: { checklist: checklistAccessWhere(session.user.id, session.user.role) },
+      item: { checklist: checklistAccessWhere(session.user.id, session.user.role, session.user.organizationId) },
     },
   })
   if (!attachment) {

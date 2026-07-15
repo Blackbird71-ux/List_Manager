@@ -13,6 +13,7 @@ import {
   Settings,
   UserCheck,
   Users,
+  Users2,
 } from 'lucide-react'
 import { HelpMenu } from '@/components/HelpMenu'
 import { NotificationsBell } from '@/components/NotificationsBell'
@@ -29,6 +30,7 @@ export function AppShell({ user, children }: AppShellProps) {
   const links = [
     { href: '/', label: 'Checklists', icon: ListChecks },
     { href: '/my-work', label: 'My Work', icon: UserCheck },
+    { href: '/my-team', label: 'My Team', icon: Users2 },
     { href: '/completed', label: 'Completed', icon: CheckCircle2 },
     { href: '/templates', label: 'Templates', icon: LayoutTemplate },
     ...(user.role === 'admin' || user.role === 'manager'

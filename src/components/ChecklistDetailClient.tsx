@@ -21,6 +21,7 @@ import {
   Users as UsersIcon,
 } from 'lucide-react'
 import type { ApiActivity, ApiChecklist, ApiChecklistItem, ApiComment, ApiUser } from '@/lib/types'
+import { DepartmentPicker } from '@/components/DepartmentPicker'
 import { cn } from '@/lib/utils'
 
 // ChecklistItem.dueDate is new in the schema; ApiChecklistItem doesn't declare it yet.
@@ -728,7 +729,11 @@ function SharingPanel({
 }) {
   const [expanded, setExpanded] = useState(false)
   const [busy, setBusy] = useState(false)
+  // True while the user has clicked "Department" but not yet picked one —
+  // the change is only saved once at least one department is selected.
+  const [pickingDepts, setPickingDepts] = useState(false)
   const sharedIds = new Set(checklist.shares.map((s) => s.user.id))
+  const deptIds = new Set((checklist.departments ?? []).map((d) => d.department.id))
   const shareable = users.filter((u) => u.id !== currentUserId)
 
   async function toggleShare(userId: string) {
@@ -744,15 +749,40 @@ function SharingPanel({
   }
 
   async function setVisibility(visibility: string) {
+    if (visibility === 'department' && deptIds.size === 0) {
+      setPickingDepts(true)
+      return
+    }
+    setPickingDepts(false)
     setBusy(true)
     try {
-      await onSave({ visibility })
+      await onSave(
+        visibility === 'department'
+          ? { visibility, departmentIds: Array.from(deptIds) }
+          : { visibility }
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function toggleDepartment(departmentId: string) {
+    const next = new Set(deptIds)
+    if (next.has(departmentId)) next.delete(departmentId)
+    else next.add(departmentId)
+    if (next.size === 0) return // must keep at least one department
+    setBusy(true)
+    try {
+      await onSave({ visibility: 'department', departmentIds: Array.from(next) })
+      setPickingDepts(false)
     } finally {
       setBusy(false)
     }
   }
 
   const isPrivate = checklist.visibility === 'private'
+  const isDept = checklist.visibility === 'department'
+  const showDeptPicker = isDept || pickingDepts
 
   return (
     <div className="rounded-2xl border border-border bg-panel">
@@ -765,7 +795,9 @@ function SharingPanel({
         <span className="ml-auto text-xs font-normal text-faint">
           {isPrivate
             ? `Private${sharedIds.size > 0 ? ` · shared with ${sharedIds.size}` : ''}`
-            : 'Team — everyone can see it'}
+            : isDept
+              ? `Departments — ${(checklist.departments ?? []).map((d) => d.department.name).join(', ')}`
+              : 'Team — everyone can see it'}
         </span>
       </button>
 
@@ -774,24 +806,38 @@ function SharingPanel({
           <div className="flex gap-2">
             {[
               { value: 'team', label: 'Team', hint: 'Everyone signed in' },
+              { value: 'department', label: 'Department', hint: 'Members of chosen departments' },
               { value: 'private', label: 'Private', hint: 'Only you, assignees & shared users' },
-            ].map((v) => (
-              <button
-                key={v.value}
-                onClick={() => setVisibility(v.value)}
-                disabled={busy || checklist.visibility === v.value}
-                className={cn(
-                  'flex-1 rounded-lg border p-2.5 text-left text-sm',
-                  checklist.visibility === v.value
-                    ? 'border-accent bg-accent-soft'
-                    : 'border-border hover:bg-hover'
-                )}
-              >
-                <span className="block font-medium">{v.label}</span>
-                <span className="block text-xs text-faint">{v.hint}</span>
-              </button>
-            ))}
+            ].map((v) => {
+              const active = v.value === 'department' ? showDeptPicker : checklist.visibility === v.value
+              return (
+                <button
+                  key={v.value}
+                  onClick={() => setVisibility(v.value)}
+                  disabled={busy || active}
+                  className={cn(
+                    'flex-1 rounded-lg border p-2.5 text-left text-sm',
+                    active ? 'border-accent bg-accent-soft' : 'border-border hover:bg-hover'
+                  )}
+                >
+                  <span className="block font-medium">{v.label}</span>
+                  <span className="block text-xs text-faint">{v.hint}</span>
+                </button>
+              )
+            })}
           </div>
+
+          {showDeptPicker && (
+            <div>
+              <p className="mb-1.5 text-xs font-medium text-muted">
+                Visible to members of these departments
+              </p>
+              <DepartmentPicker selected={deptIds} onToggle={toggleDepartment} disabled={busy} />
+              <p className="mt-2 text-[11px] text-faint">
+                Managers and admins can always see every checklist.
+              </p>
+            </div>
+          )}
 
           {isPrivate && (
             <div>

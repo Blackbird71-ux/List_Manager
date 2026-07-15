@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { existsSync, readFileSync, readdirSync } from 'fs'
 import { auth } from '@/lib/auth'
+import { isPrimaryOrgAdmin } from '@/lib/access'
 import {
   inContainer,
   queryReady,
@@ -23,7 +24,8 @@ function findCredentialsFile(): string | null {
 export async function GET() {
   const session = await auth()
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (session.user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!(await isPrimaryOrgAdmin(session.user.role, session.user.organizationId)))
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const credsFile = findCredentialsFile()
   let tunnelId: string | null = null

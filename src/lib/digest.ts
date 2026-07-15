@@ -16,7 +16,14 @@ export async function runOverdueDigest(): Promise<{ notified: number; overdue: n
 
   const overdue = await prisma.checklist.findMany({
     where: { status: 'active', dueDate: { lt: now } },
-    select: { id: true, title: true, dueDate: true, assignedToId: true, createdById: true },
+    select: {
+      id: true,
+      title: true,
+      dueDate: true,
+      assignedToId: true,
+      createdById: true,
+      organizationId: true,
+    },
   })
 
   let notified = 0
@@ -49,9 +56,20 @@ export async function runOverdueDigest(): Promise<{ notified: number; overdue: n
     }
 
     // Team-wide summary for every admin/manager, same dedupe window.
+    // Managers only ever hear about their own organisation's checklists.
+    const overduePerOrg = new Map<string, number>()
+    for (const checklist of overdue) {
+      overduePerOrg.set(
+        checklist.organizationId,
+        (overduePerOrg.get(checklist.organizationId) ?? 0) + 1
+      )
+    }
     const managers = await prisma.user.findMany({
-      where: { role: { in: ['admin', 'manager'] } },
-      select: { id: true },
+      where: {
+        role: { in: ['admin', 'manager'] },
+        organizationId: { in: [...overduePerOrg.keys()] },
+      },
+      select: { id: true, organizationId: true },
     })
     const recentDigests = await prisma.notification.findMany({
       where: {
@@ -63,12 +81,16 @@ export async function runOverdueDigest(): Promise<{ notified: number; overdue: n
       select: { userId: true },
     })
     const digestSent = new Set(recentDigests.map((n) => n.userId))
-    const count = overdue.length
-    const body = `${count} checklist${count === 1 ? ' is' : 's are'} overdue across the team.`
 
     for (const manager of managers) {
       if (digestSent.has(manager.id)) continue
-      await notify(manager.id, 'Overdue digest', body)
+      const count = overduePerOrg.get(manager.organizationId) ?? 0
+      if (count === 0) continue
+      await notify(
+        manager.id,
+        'Overdue digest',
+        `${count} checklist${count === 1 ? ' is' : 's are'} overdue across the team.`
+      )
       notified++
     }
   }

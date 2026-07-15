@@ -30,7 +30,7 @@ export default async function MyWorkPage() {
   const session = await auth()
   if (!session?.user?.id) redirect('/login')
 
-  const access = checklistAccessWhere(session.user.id, session.user.role)
+  const access = checklistAccessWhere(session.user.id, session.user.role, session.user.organizationId)
   const [items, checklists] = await Promise.all([
     prisma.checklistItem.findMany({
       where: {

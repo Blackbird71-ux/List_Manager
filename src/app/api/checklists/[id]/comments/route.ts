@@ -13,7 +13,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   }
 
   const { id } = await params
-  const allowed = await canAccessChecklist(id, session.user.id, session.user.role)
+  const allowed = await canAccessChecklist(id, session.user.id, session.user.role, session.user.organizationId)
   if (!allowed) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
@@ -69,7 +69,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
   }
 
-  const allowed = await canAccessChecklist(id, session.user.id, session.user.role)
+  const allowed = await canAccessChecklist(id, session.user.id, session.user.role, session.user.organizationId)
   if (!allowed) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
@@ -91,20 +91,30 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       assignedToId: true,
       shares: { select: { userId: true } },
       items: { select: { assignedToId: true } },
+      departments: {
+        select: { department: { select: { members: { select: { userId: true } } } } },
+      },
     },
   })
   if (checklist) {
     // @mentions: match against users who can access this checklist.
-    const allUsers = await prisma.user.findMany({ select: { id: true, name: true, role: true } })
+    const allUsers = await prisma.user.findMany({
+      where: { organizationId: session.user.organizationId },
+      select: { id: true, name: true, role: true },
+    })
     const sharedIds = new Set(checklist.shares.map((s) => s.userId))
     const itemAssigneeIds = new Set(
       checklist.items.map((i) => i.assignedToId).filter((uid): uid is string => Boolean(uid))
+    )
+    const departmentMemberIds = new Set(
+      checklist.departments.flatMap((d) => d.department.members.map((m) => m.userId))
     )
     const accessibleUsers = allUsers.filter(
       (u) =>
         u.role === 'admin' ||
         u.role === 'manager' ||
         checklist.visibility === 'team' ||
+        (checklist.visibility === 'department' && departmentMemberIds.has(u.id)) ||
         u.id === checklist.createdById ||
         u.id === checklist.assignedToId ||
         sharedIds.has(u.id) ||

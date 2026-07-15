@@ -18,7 +18,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   }
 
   const { id } = await params
-  const template = await prisma.template.findUnique({ where: { id }, include: templateInclude })
+  const template = await prisma.template.findFirst({
+    where: { id, organizationId: session.user.organizationId },
+    include: templateInclude,
+  })
   if (!template) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
@@ -61,7 +64,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
   }
 
-  const existing = await prisma.template.findUnique({ where: { id }, select: { id: true } })
+  const existing = await prisma.template.findFirst({
+    where: { id, organizationId: session.user.organizationId },
+    select: { id: true },
+  })
   if (!existing) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
@@ -113,6 +119,8 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
 
   const { id } = await params
   // Checklists keep working after template deletion (templateId is SetNull).
-  await prisma.template.delete({ where: { id } }).catch(() => null)
+  await prisma.template
+    .deleteMany({ where: { id, organizationId: session.user.organizationId } })
+    .catch(() => null)
   return NextResponse.json({ ok: true })
 }

@@ -24,7 +24,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const valid = await bcrypt.compare(credentials.password as string, user.password)
         if (!valid) return null
 
-        return { id: user.id, email: user.email, name: user.name, role: user.role }
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          organizationId: user.organizationId,
+        }
       },
     }),
   ],
@@ -33,6 +39,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (user) {
         token.id = user.id
         token.role = (user as { role: string }).role
+        token.organizationId = (user as { organizationId: string }).organizationId
       }
       return token
     },
@@ -42,14 +49,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (session.user) {
         session.user.id = token.id as string
         session.user.role = token.role as string
+        session.user.organizationId = token.organizationId as string
         try {
           const fresh = await prisma.user.findUnique({
             where: { id: token.id as string },
-            select: { role: true, name: true },
+            select: { role: true, name: true, organizationId: true },
           })
           if (fresh) {
             session.user.role = fresh.role
             session.user.name = fresh.name
+            session.user.organizationId = fresh.organizationId
           }
         } catch {
           // DB unreachable — stale auth is better than no auth

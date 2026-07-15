@@ -25,11 +25,22 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   const checklist = await prisma.checklist.findFirst({
-    where: { id, ...checklistAccessWhere(session.user.id, session.user.role) },
+    where: { id, ...checklistAccessWhere(session.user.id, session.user.role, session.user.organizationId) },
     select: { id: true },
   })
   if (!checklist) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
+  // An item assignee must belong to the same organisation.
+  if (parsed.data.assignedToId) {
+    const assignee = await prisma.user.findFirst({
+      where: { id: parsed.data.assignedToId, organizationId: session.user.organizationId },
+      select: { id: true },
+    })
+    if (!assignee) {
+      return NextResponse.json({ error: 'Assignee not found' }, { status: 400 })
+    }
   }
 
   const last = await prisma.checklistItem.findFirst({

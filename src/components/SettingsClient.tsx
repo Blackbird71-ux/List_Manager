@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Check, Moon, Palette, Sun } from 'lucide-react'
+import { Check, Copy, Moon, Palette, RefreshCw, Sun } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { TunnelSection } from '@/components/TunnelSection'
 import { EmailSection } from '@/components/EmailSection'
@@ -27,8 +27,10 @@ function applyTheme(theme: Theme) {
 
 export function SettingsClient({
   user,
+  isPrimaryAdmin,
 }: {
   user: { id: string; name: string; email: string; role: string }
+  isPrimaryAdmin: boolean
 }) {
   const [theme, setTheme] = useState<Theme>('light')
 
@@ -72,6 +74,9 @@ export function SettingsClient({
         </div>
       </section>
 
+      {/* Organisation (name, invite code) */}
+      <OrganizationSection isAdmin={user.role === 'admin'} />
+
       {/* Profile */}
       <ProfileSection user={user} />
 
@@ -81,12 +86,127 @@ export function SettingsClient({
       {/* Push notifications (per device, everyone) */}
       <PushSection />
 
-      {/* Email for password resets (admins only) */}
-      {user.role === 'admin' && <EmailSection />}
-
-      {/* Remote access tunnel (admins only) */}
-      {user.role === 'admin' && <TunnelSection />}
+      {/* Instance-wide settings — only primary-organisation admins */}
+      {isPrimaryAdmin && <EmailSection />}
+      {isPrimaryAdmin && <TunnelSection />}
     </div>
+  )
+}
+
+function OrganizationSection({ isAdmin }: { isAdmin: boolean }) {
+  const [org, setOrg] = useState<{ name: string; inviteCode?: string } | null>(null)
+  const [name, setName] = useState('')
+  const [status, setStatus] = useState<'idle' | 'busy' | 'saved' | 'error'>('idle')
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/organization').then(async (res) => {
+      if (res.ok) {
+        const data = (await res.json()).organization
+        setOrg(data)
+        setName(data.name)
+      }
+    })
+  }, [])
+
+  async function patch(body: Record<string, unknown>) {
+    setStatus('busy')
+    const res = await fetch('/api/organization', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (res.ok) {
+      const data = (await res.json()).organization
+      setOrg(data)
+      setName(data.name)
+      setStatus('saved')
+    } else {
+      setStatus('error')
+    }
+  }
+
+  async function copyCode() {
+    if (!org?.inviteCode) return
+    await navigator.clipboard.writeText(org.inviteCode)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  if (!org) return null
+
+  return (
+    <section className="rounded-xl border border-border bg-panel p-5">
+      <h2 className="font-semibold">Organisation</h2>
+      {!isAdmin ? (
+        <p className="mt-0.5 text-sm text-muted">
+          You&apos;re a member of <span className="font-medium text-ink">{org.name}</span>.
+        </p>
+      ) : (
+        <div className="mt-3 space-y-4">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              patch({ name: name.trim() })
+            }}
+            className="space-y-2"
+          >
+            <label className="mb-1 block text-sm font-medium">Organisation name</label>
+            <div className="flex gap-2">
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                maxLength={200}
+                className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm focus:border-accent focus:outline-none"
+              />
+              <button
+                type="submit"
+                disabled={status === 'busy' || name.trim() === '' || name.trim() === org.name}
+                className="shrink-0 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-ink hover:bg-accent-2 disabled:opacity-50"
+              >
+                Save
+              </button>
+            </div>
+          </form>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium">Invite code</label>
+            <p className="mb-2 text-xs text-muted">
+              New people join your organisation by choosing &quot;Join with code&quot; on the
+              registration page and entering this code.
+            </p>
+            <div className="flex items-center gap-2">
+              <code className="rounded-lg border border-border bg-field px-3 py-2 font-mono text-sm tracking-wide">
+                {org.inviteCode}
+              </code>
+              <button
+                type="button"
+                onClick={copyCode}
+                className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm text-muted hover:bg-hover"
+              >
+                <Copy className="h-3.5 w-3.5" /> {copied ? 'Copied' : 'Copy'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm('Generate a new invite code? The old code will stop working.')) {
+                    patch({ regenerateInviteCode: true })
+                  }
+                }}
+                disabled={status === 'busy'}
+                className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm text-muted hover:bg-hover disabled:opacity-50"
+              >
+                <RefreshCw className="h-3.5 w-3.5" /> Regenerate
+              </button>
+            </div>
+          </div>
+
+          {status === 'saved' && <p className="text-sm text-ok">Saved.</p>}
+          {status === 'error' && <p className="text-sm text-danger">Could not save.</p>}
+        </div>
+      )}
+    </section>
   )
 }
 

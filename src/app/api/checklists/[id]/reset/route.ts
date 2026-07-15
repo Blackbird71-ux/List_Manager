@@ -12,7 +12,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   }
 
   const { id } = await params
-  const allowed = await canAccessChecklist(id, session.user.id, session.user.role)
+  const allowed = await canAccessChecklist(id, session.user.id, session.user.role, session.user.organizationId)
   if (!allowed) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }

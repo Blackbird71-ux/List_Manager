@@ -18,7 +18,7 @@ export async function POST(
     where: {
       id: itemId,
       checklistId: id,
-      checklist: checklistAccessWhere(session.user.id, session.user.role),
+      checklist: checklistAccessWhere(session.user.id, session.user.role, session.user.organizationId),
     },
     select: { id: true },
   })

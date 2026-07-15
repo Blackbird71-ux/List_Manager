@@ -16,6 +16,7 @@ prisma/*.db-shm
 data/
 .codebase-memory/
 *.tar
+*.bak
 
 # local notes with credentials - never commit
 Listsmanager.txt

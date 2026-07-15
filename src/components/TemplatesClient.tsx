@@ -14,6 +14,7 @@ import {
   Upload,
 } from 'lucide-react'
 import type { ApiTemplate, ApiUser } from '@/lib/types'
+import { DepartmentPicker } from '@/components/DepartmentPicker'
 import { cn } from '@/lib/utils'
 
 const RECURRENCES = ['none', 'daily', 'weekly', 'fortnightly', 'monthly', 'quarterly', 'yearly']
@@ -259,6 +260,7 @@ function StartChecklistModal({
   const [dueDate, setDueDate] = useState('')
   const [assignedToId, setAssignedToId] = useState('')
   const [visibility, setVisibility] = useState('team')
+  const [departmentIds, setDepartmentIds] = useState<Set<string>>(new Set())
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -267,6 +269,15 @@ function StartChecklistModal({
       if (res.ok) setUsers((await res.json()).users)
     })
   }, [])
+
+  function toggleDepartment(id: string) {
+    setDepartmentIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -281,6 +292,7 @@ function StartChecklistModal({
           dueDate: dueDate ? new Date(`${dueDate}T00:00:00`).toISOString() : null,
           assignedToId: assignedToId || null,
           visibility,
+          departmentIds: visibility === 'department' ? Array.from(departmentIds) : [],
         }),
       })
       if (!res.ok) {
@@ -337,9 +349,17 @@ function StartChecklistModal({
             className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm"
           >
             <option value="team">Team — everyone</option>
+            <option value="department">Department — chosen departments</option>
             <option value="private">Private — only me + shared</option>
           </select>
         </div>
+
+        {visibility === 'department' && (
+          <div>
+            <label className="mb-1 block text-sm font-medium">Visible to departments</label>
+            <DepartmentPicker selected={departmentIds} onToggle={toggleDepartment} disabled={busy} />
+          </div>
+        )}
 
         {error && <p className="text-sm text-danger">{error}</p>}
 

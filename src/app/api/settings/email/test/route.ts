@@ -1,14 +1,18 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { sendEmail } from '@/lib/email'
+import { isPrimaryOrgAdmin } from '@/lib/access'
 
-// Admin: send a test email to the signed-in admin's own address.
+// Primary-org admin: send a test email to the signed-in admin's own address.
 export async function POST() {
   const session = await auth()
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  if (session.user.role !== 'admin' || !session.user.email) {
+  if (
+    !session.user.email ||
+    !(await isPrimaryOrgAdmin(session.user.role, session.user.organizationId))
+  ) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 

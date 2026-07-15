@@ -34,7 +34,7 @@ export async function GET(request: Request) {
   const checklists = await prisma.checklist.findMany({
     where: {
       AND: [
-        checklistAccessWhere(session.user.id, session.user.role),
+        checklistAccessWhere(session.user.id, session.user.role, session.user.organizationId),
         {
           ...(status !== 'all' ? { status } : {}),
           ...(category ? { category } : {}),

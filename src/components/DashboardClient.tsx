@@ -13,6 +13,7 @@ import {
   User as UserIcon,
 } from 'lucide-react'
 import type { ApiChecklist, ApiTemplate, ApiUser } from '@/lib/types'
+import { DepartmentPicker } from '@/components/DepartmentPicker'
 import { cn } from '@/lib/utils'
 
 const PRIORITY_STYLES: Record<string, string> = {
@@ -289,9 +290,19 @@ function CreateChecklistModal({
   const [assignedToId, setAssignedToId] = useState('')
   const [priority, setPriority] = useState('medium')
   const [visibility, setVisibility] = useState('team')
+  const [departmentIds, setDepartmentIds] = useState<Set<string>>(new Set())
   const [itemsText, setItemsText] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+
+  function toggleDepartment(id: string) {
+    setDepartmentIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -303,6 +314,7 @@ function CreateChecklistModal({
         assignedToId: assignedToId || null,
         priority,
         visibility,
+        departmentIds: visibility === 'department' ? Array.from(departmentIds) : [],
       }
       const body =
         mode === 'template'
@@ -456,10 +468,18 @@ function CreateChecklistModal({
               className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm"
             >
               <option value="team">Team — everyone</option>
+              <option value="department">Department — chosen departments</option>
               <option value="private">Private — only me + shared</option>
             </select>
           </div>
         </div>
+
+        {visibility === 'department' && (
+          <div>
+            <label className="mb-1 block text-sm font-medium">Visible to departments</label>
+            <DepartmentPicker selected={departmentIds} onToggle={toggleDepartment} disabled={busy} />
+          </div>
+        )}
 
         {error && <p className="text-sm text-danger">{error}</p>}
 
