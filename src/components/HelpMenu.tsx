@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { usePathname } from 'next/navigation'
 import { HelpCircle, X } from 'lucide-react'
 
@@ -233,7 +234,9 @@ export function HelpMenu() {
         <HelpCircle className="h-4 w-4" />
       </button>
 
-      {open && (
+      {/* Portal to body: the sticky header's backdrop-blur creates a containing
+          block that would otherwise trap this fixed-position overlay inside it. */}
+      {open && createPortal(
         <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="Help">
           <div
             className="absolute inset-0 bg-black/40"
@@ -271,7 +274,8 @@ export function HelpMenu() {
               </p>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   )
