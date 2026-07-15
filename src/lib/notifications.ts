@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma'
+import { sendPushToUser } from '@/lib/webpush'
 
 export async function notify(
   userId: string,
@@ -9,4 +10,6 @@ export async function notify(
   await prisma.notification.create({
     data: { userId, title, body, checklistId },
   })
+  // Fire-and-forget: a push failure must never break the caller.
+  void sendPushToUser(userId, { title, body, checklistId }).catch(() => undefined)
 }

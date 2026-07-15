@@ -5,6 +5,7 @@ import { Check, Moon, Palette, Sun } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { TunnelSection } from '@/components/TunnelSection'
 import { EmailSection } from '@/components/EmailSection'
+import { PushSection } from '@/components/PushSection'
 
 type Theme = 'light' | 'iris' | 'dark'
 
@@ -76,6 +77,9 @@ export function SettingsClient({
 
       {/* Password */}
       <PasswordSection userId={user.id} />
+
+      {/* Push notifications (per device, everyone) */}
+      <PushSection />
 
       {/* Email for password resets (admins only) */}
       {user.role === 'admin' && <EmailSection />}
