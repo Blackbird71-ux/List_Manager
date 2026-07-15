@@ -118,7 +118,7 @@ if [ -f "$DB_PATH" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 5. Cron jobs: daily backup (03:00) and overdue digest (07:00)
+# 5. Cron jobs: daily backup (03:00), recurrence spawn (06:00), overdue digest (07:00)
 # ---------------------------------------------------------------------------
 echo ""
 echo ">> [5/6] Configuring scheduled jobs..."
@@ -132,10 +132,11 @@ export DIGEST_SECRET
 
 {
   echo "0 3 * * * su-exec nextjs:nodejs /app/scripts/backup-db.sh /data/backups >> /data/backups/cron.log 2>&1"
+  echo "0 6 * * * wget -q -O- --header \"x-digest-secret: $DIGEST_SECRET\" http://127.0.0.1:3000/api/scheduler/recurrence >> /data/backups/scheduler.log 2>&1"
   echo "0 7 * * * wget -q -O- --header \"x-digest-secret: $DIGEST_SECRET\" http://127.0.0.1:3000/api/digest/overdue >> /data/backups/digest.log 2>&1"
 } > /etc/crontabs/root
 crond -b -l 2
-echo "   ok: cron daemon started (backup 03:00, overdue digest 07:00)"
+echo "   ok: cron daemon started (backup 03:00, recurrence spawn 06:00, overdue digest 07:00)"
 
 # ---------------------------------------------------------------------------
 # 6. Optional: Cloudflare tunnel

@@ -1,7 +1,8 @@
 import { prisma } from '@/lib/prisma'
-import { computeNextDueDate, isRecurrence } from '@/lib/recurrence'
+import { computeNextDueDate, isRecurrence, type Recurrence } from '@/lib/recurrence'
 import { notify } from '@/lib/notifications'
-import { formatInTz } from '@/lib/timezone'
+import { logActivity } from '@/lib/activity'
+import { formatInTz, todayStart } from '@/lib/timezone'
 
 const checklistInclude = {
   items: {
@@ -268,26 +269,7 @@ export async function completeChecklist(checklistId: string): Promise<{ spawnedI
     return { spawnedId: null } // already spawned
   }
 
-  const nextDue = computeNextDueDate(checklist.dueDate, checklist.recurrence)
-
-  const spawned = await prisma.$transaction(async (tx) => {
-    // Re-check the guard inside the transaction to prevent a double spawn
-    // from two concurrent completion requests.
-    const fresh = await tx.checklist.findUnique({
-      where: { id: checklistId },
-      select: { nextInstanceId: true },
-    })
-    if (fresh?.nextInstanceId) return null
-
-    const next = await cloneForNextRun(tx, checklist, nextDue)
-
-    await tx.checklist.update({
-      where: { id: checklistId },
-      data: { nextInstanceId: next.id },
-    })
-
-    return next
-  })
+  const { spawned, nextDue } = await spawnNextInstance(checklist, checklist.recurrence)
 
   if (spawned && checklist.assignedToId) {
     const dueLabel = nextDue
@@ -302,4 +284,86 @@ export async function completeChecklist(checklistId: string): Promise<{ spawnedI
   }
 
   return { spawnedId: spawned?.id ?? null }
+}
+
+/**
+ * Spawn the next instance of a recurring checklist and link it via
+ * nextInstanceId. Re-checks the guard inside the transaction so two
+ * concurrent spawns (e.g. completion + scheduler) create only one instance.
+ * Returns spawned: null if the next instance already exists.
+ */
+async function spawnNextInstance(
+  checklist: CloneSource & { dueDate: Date | null },
+  recurrence: Recurrence
+) {
+  const nextDue = computeNextDueDate(checklist.dueDate, recurrence)
+
+  const spawned = await prisma.$transaction(async (tx) => {
+    const fresh = await tx.checklist.findUnique({
+      where: { id: checklist.id },
+      select: { nextInstanceId: true },
+    })
+    if (fresh?.nextInstanceId) return null
+
+    const next = await cloneForNextRun(tx, checklist, nextDue)
+
+    await tx.checklist.update({
+      where: { id: checklist.id },
+      data: { nextInstanceId: next.id },
+    })
+
+    return next
+  })
+
+  return { spawned, nextDue }
+}
+
+/**
+ * Scheduled sweep for recurring checklists that were never completed: any
+ * active recurring checklist past its due date with no next instance gets
+ * one spawned now. Setting nextInstanceId means completeChecklist will skip
+ * its own spawn when the overdue one is eventually completed.
+ */
+export async function spawnOverdueRecurring(): Promise<{ spawned: number }> {
+  const overdue = await prisma.checklist.findMany({
+    where: {
+      status: 'active',
+      recurrence: { not: 'none' },
+      nextInstanceId: null,
+      dueDate: { not: null, lt: todayStart() },
+    },
+    include: { items: { orderBy: { sortOrder: 'asc' } } },
+  })
+
+  let count = 0
+  for (const checklist of overdue) {
+    if (!isRecurrence(checklist.recurrence) || checklist.recurrence === 'none') continue
+    try {
+      const { spawned, nextDue } = await spawnNextInstance(checklist, checklist.recurrence)
+      if (!spawned) continue
+      count++
+
+      const dueLabel = nextDue
+        ? formatInTz(nextDue, { day: 'numeric', month: 'short', year: 'numeric' })
+        : 'unscheduled'
+      logActivity(
+        checklist.id,
+        'Scheduler',
+        'recurred',
+        `overdue; next ${checklist.recurrence} instance created (due ${dueLabel})`
+      )
+      if (checklist.assignedToId) {
+        await notify(
+          checklist.assignedToId,
+          'Recurring checklist renewed',
+          `"${checklist.title}" is overdue, so the next ${checklist.recurrence} instance has been created. Due ${dueLabel}.`,
+          spawned.id
+        )
+      }
+    } catch {
+      // One bad checklist must not stop the rest of the sweep.
+    }
+  }
+
+  return { spawned: count }
 }
