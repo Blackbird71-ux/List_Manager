@@ -23,6 +23,9 @@ import {
 import type { ApiActivity, ApiChecklist, ApiChecklistItem, ApiComment, ApiUser } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
+// ChecklistItem.dueDate is new in the schema; ApiChecklistItem doesn't declare it yet.
+type ItemWithDue = ApiChecklistItem & { dueDate?: string | null }
+
 export function ChecklistDetailClient({
   checklistId,
   currentUserId,
@@ -39,6 +42,9 @@ export function ChecklistDetailClient({
   const [newItemText, setNewItemText] = useState('')
   const [justCompleted, setJustCompleted] = useState(false)
   const [dragId, setDragId] = useState<string | null>(null)
+  const [pollTick, setPollTick] = useState(0)
+  const dragIdRef = useRef<string | null>(null)
+  dragIdRef.current = dragId
 
   const load = useCallback(async () => {
     const [clRes, uRes] = await Promise.all([
@@ -52,6 +58,36 @@ export function ChecklistDetailClient({
 
   useEffect(() => {
     load()
+  }, [load])
+
+  // Auto-refresh: poll while the tab is visible, but never clobber
+  // in-progress edits — skip while dragging or while the user is focused
+  // in a text field; the next poll catches up.
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState !== 'visible') return
+      if (dragIdRef.current) return
+      const el = document.activeElement
+      if (
+        el &&
+        (el.tagName === 'TEXTAREA' ||
+          el.tagName === 'SELECT' ||
+          (el instanceof HTMLInputElement && el.type !== 'checkbox'))
+      ) {
+        return
+      }
+      load()
+      setPollTick((t) => t + 1)
+    }
+    const interval = setInterval(refresh, 20_000)
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') refresh()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
   }, [load])
 
   async function patchChecklist(data: Record<string, unknown>) {
@@ -396,7 +432,7 @@ export function ChecklistDetailClient({
         </form>
       </div>
 
-      <CommentsActivityPanel checklistId={checklistId} />
+      <CommentsActivityPanel checklistId={checklistId} users={users} refreshTick={pollTick} />
     </div>
   )
 }
@@ -418,12 +454,62 @@ const ACTION_LABELS: Record<string, string> = {
   edited: 'edited the details',
 }
 
-function CommentsActivityPanel({ checklistId }: { checklistId: string }) {
+// Highlight `@Full Name` (or an unambiguous `@First`) tokens of real users.
+// Returns plain React nodes — never raw HTML.
+function renderBodyWithMentions(body: string, users: ApiUser[]): React.ReactNode {
+  if (users.length === 0) return body
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const firstWordCounts = new Map<string, number>()
+  for (const u of users) {
+    const first = u.name.trim().split(/\s+/)[0].toLowerCase()
+    firstWordCounts.set(first, (firstWordCounts.get(first) ?? 0) + 1)
+  }
+  const tokens = new Set<string>()
+  for (const u of users) {
+    const full = u.name.trim()
+    if (!full) continue
+    tokens.add(full)
+    const first = full.split(/\s+/)[0]
+    if (firstWordCounts.get(first.toLowerCase()) === 1) tokens.add(first)
+  }
+  if (tokens.size === 0) return body
+  const pattern = new RegExp(
+    `@(${[...tokens].sort((a, b) => b.length - a.length).map(esc).join('|')})(?!\\w)`,
+    'gi'
+  )
+  const nodes: React.ReactNode[] = []
+  let last = 0
+  for (const m of body.matchAll(pattern)) {
+    if (m.index > last) nodes.push(body.slice(last, m.index))
+    nodes.push(
+      <span key={m.index} className="rounded bg-accent-soft px-0.5 font-medium text-accent">
+        {m[0]}
+      </span>
+    )
+    last = m.index + m[0].length
+  }
+  if (last === 0) return body
+  if (last < body.length) nodes.push(body.slice(last))
+  return nodes
+}
+
+function CommentsActivityPanel({
+  checklistId,
+  users,
+  refreshTick,
+}: {
+  checklistId: string
+  users: ApiUser[]
+  refreshTick: number
+}) {
   const [tab, setTab] = useState<'comments' | 'activity'>('comments')
   const [comments, setComments] = useState<ApiComment[]>([])
   const [activities, setActivities] = useState<ApiActivity[]>([])
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
+  const [mention, setMention] = useState<{ start: number; query: string } | null>(null)
+  const [mentionIndex, setMentionIndex] = useState(0)
+  const draftRef = useRef<HTMLTextAreaElement>(null)
 
   const loadComments = useCallback(async () => {
     const res = await fetch(`/api/checklists/${checklistId}/comments`)
@@ -442,6 +528,67 @@ function CommentsActivityPanel({ checklistId }: { checklistId: string }) {
   useEffect(() => {
     if (tab === 'activity') loadActivity()
   }, [tab, loadActivity])
+
+  // Piggyback on the checklist poll, but leave an unsent draft alone.
+  const lastTick = useRef(0)
+  useEffect(() => {
+    if (refreshTick === lastTick.current) return
+    lastTick.current = refreshTick
+    if (!draft && !busy) loadComments()
+    if (tab === 'activity') loadActivity()
+  }, [refreshTick, draft, busy, tab, loadComments, loadActivity])
+
+  const suggestions = mention
+    ? users
+        .filter((u) => u.name.toLowerCase().startsWith(mention.query.toLowerCase()))
+        .slice(0, 5)
+    : []
+  const activeSuggestion = Math.min(mentionIndex, Math.max(suggestions.length - 1, 0))
+
+  function updateDraft(value: string, caret: number) {
+    setDraft(value)
+    const before = value.slice(0, caret)
+    const at = before.lastIndexOf('@')
+    if (at >= 0 && (at === 0 || /\s/.test(before[at - 1]))) {
+      const query = before.slice(at + 1)
+      if (!query.includes('\n') && query.length <= 40) {
+        setMention({ start: at, query })
+        setMentionIndex(0)
+        return
+      }
+    }
+    setMention(null)
+  }
+
+  function pickMention(user: ApiUser) {
+    if (!mention) return
+    const el = draftRef.current
+    const caret = el?.selectionStart ?? draft.length
+    const next = `${draft.slice(0, mention.start)}@${user.name} ${draft.slice(caret)}`
+    setDraft(next)
+    setMention(null)
+    const pos = mention.start + user.name.length + 2
+    requestAnimationFrame(() => {
+      el?.focus()
+      el?.setSelectionRange(pos, pos)
+    })
+  }
+
+  function onDraftKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (!mention || suggestions.length === 0) return
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setMentionIndex((i) => (i + 1) % suggestions.length)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setMentionIndex((i) => (i - 1 + suggestions.length) % suggestions.length)
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      pickMention(suggestions[activeSuggestion])
+    } else if (e.key === 'Escape') {
+      setMention(null)
+    }
+  }
 
   async function postComment(e: React.FormEvent) {
     e.preventDefault()
@@ -498,18 +645,43 @@ function CommentsActivityPanel({ checklistId }: { checklistId: string }) {
                 <span className="font-medium text-muted">{c.author.name}</span> ·{' '}
                 {new Date(c.createdAt).toLocaleString()}
               </p>
-              <p className="mt-0.5 whitespace-pre-wrap">{c.body}</p>
+              <p className="mt-0.5 whitespace-pre-wrap">{renderBodyWithMentions(c.body, users)}</p>
             </div>
           ))}
           <form onSubmit={postComment} className="flex gap-2 pt-1">
-            <textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              placeholder="Write a comment…"
-              rows={2}
-              maxLength={2000}
-              className="flex-1 rounded-lg border border-border bg-field px-3 py-2 text-sm focus:border-accent focus:outline-none"
-            />
+            <div className="relative flex-1">
+              <textarea
+                ref={draftRef}
+                value={draft}
+                onChange={(e) => updateDraft(e.target.value, e.target.selectionStart)}
+                onKeyDown={onDraftKeyDown}
+                onBlur={() => setMention(null)}
+                placeholder="Write a comment… use @ to mention someone"
+                rows={2}
+                maxLength={2000}
+                className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm focus:border-accent focus:outline-none"
+              />
+              {mention && suggestions.length > 0 && (
+                <div className="absolute bottom-full left-0 mb-1 w-56 overflow-hidden rounded-lg border border-border bg-panel shadow-lg">
+                  {suggestions.map((u, i) => (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault()
+                        pickMention(u)
+                      }}
+                      className={cn(
+                        'block w-full px-3 py-1.5 text-left text-sm',
+                        i === activeSuggestion ? 'bg-accent-soft text-accent' : 'hover:bg-hover'
+                      )}
+                    >
+                      {u.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <button
               type="submit"
               disabled={busy || !draft.trim()}
@@ -752,7 +924,7 @@ function ItemRow({
   onDragEnd,
 }: {
   checklistId: string
-  item: ApiChecklistItem
+  item: ItemWithDue
   users: ApiUser[]
   onToggle: () => void
   onChanged: () => void
@@ -850,6 +1022,20 @@ function ItemRow({
           )}
         </div>
 
+        {item.dueDate && (
+          <span
+            className={cn(
+              'flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold',
+              !item.checked && new Date(item.dueDate) < new Date()
+                ? 'bg-danger-soft text-danger'
+                : 'bg-hover text-muted'
+            )}
+          >
+            <Calendar className="h-3 w-3" />
+            {new Date(item.dueDate).toLocaleDateString()}
+          </span>
+        )}
+
         {item.priority && (
           <span
             className={cn(
@@ -918,6 +1104,21 @@ function ItemRow({
                 <option value="medium">Medium</option>
                 <option value="high">High</option>
               </select>
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-muted">Due date</span>
+              <input
+                type="date"
+                value={item.dueDate ? item.dueDate.slice(0, 10) : ''}
+                onChange={(e) =>
+                  patchItem({
+                    dueDate: e.target.value
+                      ? new Date(`${e.target.value}T00:00:00`).toISOString()
+                      : null,
+                  })
+                }
+                className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
+              />
             </label>
           </div>
 

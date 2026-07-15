@@ -11,6 +11,7 @@ const patchSchema = z.object({
   checked: z.boolean().optional(),
   notes: z.string().max(5000).optional(),
   priority: z.enum(['low', 'medium', 'high']).nullish(),
+  dueDate: z.iso.datetime().nullish(),
   assignedToId: z.string().nullish(),
 })
 
@@ -42,9 +43,10 @@ export async function PATCH(
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  const { checked, priority, assignedToId, ...scalars } = parsed.data
+  const { checked, priority, dueDate, assignedToId, ...scalars } = parsed.data
   const data: Record<string, unknown> = { ...scalars }
   if (priority !== undefined) data.priority = priority ?? null
+  if (dueDate !== undefined) data.dueDate = dueDate ? new Date(dueDate) : null
   if (assignedToId !== undefined) data.assignedToId = assignedToId ?? null
   if (checked !== undefined && checked !== item.checked) {
     data.checked = checked
