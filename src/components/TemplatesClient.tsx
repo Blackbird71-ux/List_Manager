@@ -1,8 +1,18 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Archive, ArchiveRestore, Pencil, Play, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import {
+  Archive,
+  ArchiveRestore,
+  Download,
+  Pencil,
+  Play,
+  Plus,
+  RefreshCw,
+  Trash2,
+  Upload,
+} from 'lucide-react'
 import type { ApiTemplate, ApiUser } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -26,6 +36,9 @@ export function TemplatesClient() {
   const [showArchived, setShowArchived] = useState(false)
   const [editing, setEditing] = useState<ApiTemplate | 'new' | null>(null)
   const [starting, setStarting] = useState<ApiTemplate | null>(null)
+  const [importError, setImportError] = useState('')
+  const [importing, setImporting] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
     const res = await fetch('/api/templates?archived=true')
@@ -52,6 +65,48 @@ export function TemplatesClient() {
     load()
   }
 
+  async function exportTemplates() {
+    setImportError('')
+    const res = await fetch('/api/templates/export')
+    if (!res.ok) {
+      setImportError('Could not export templates')
+      return
+    }
+    const url = URL.createObjectURL(await res.blob())
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'templates-export.json'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  async function importTemplates(file: File) {
+    setImportError('')
+    setImporting(true)
+    try {
+      let body: unknown
+      try {
+        body = JSON.parse(await file.text())
+      } catch {
+        setImportError('That file is not valid JSON')
+        return
+      }
+      const res = await fetch('/api/templates/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setImportError(data.error ?? 'Could not import templates')
+        return
+      }
+      load()
+    } finally {
+      setImporting(false)
+    }
+  }
+
   const visible = templates.filter((t) => (showArchived ? true : !t.archived))
 
   if (loading) {
@@ -71,12 +126,38 @@ export function TemplatesClient() {
           Show archived
         </label>
         <button
+          onClick={exportTemplates}
+          className="ml-auto flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-muted hover:bg-hover"
+        >
+          <Download className="h-4 w-4" /> Export
+        </button>
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={importing}
+          className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-muted hover:bg-hover disabled:opacity-50"
+        >
+          <Upload className="h-4 w-4" /> {importing ? 'Importing…' : 'Import'}
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json,application/json"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            e.target.value = ''
+            if (file) importTemplates(file)
+          }}
+        />
+        <button
           onClick={() => setEditing('new')}
-          className="ml-auto flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-accent-ink hover:bg-accent-2"
+          className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-accent-ink hover:bg-accent-2"
         >
           <Plus className="h-4 w-4" /> New template
         </button>
       </div>
+
+      {importError && <p className="text-sm text-danger">{importError}</p>}
 
       {visible.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border py-16 text-center text-sm text-faint">
