@@ -8,7 +8,9 @@ export const metadata: Metadata = {
   title: 'Lists Manager',
   description: 'Reusable checklist templates with recurring instances',
   appleWebApp: { capable: true, statusBarStyle: 'default', title: 'Lists Manager' },
-  icons: { apple: '/icon-192.png' },
+  // Explicit icon: setting `icons` here suppresses the app/icon.png file
+  // convention, so the tab favicon must be declared alongside apple.
+  icons: { icon: '/icon.png', apple: '/icon-192.png' },
 }
 
 export const viewport: Viewport = {
