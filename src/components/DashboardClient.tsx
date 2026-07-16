@@ -74,19 +74,22 @@ export function DashboardClient({ currentUserId }: { currentUserId: string }) {
           data: bulkData,
         }),
       })
-      const result = await res.json()
-      if (result.success > 0) {
-        await load()
-        setSelectedIds(new Set())
-        setBulkMenuOpen(false)
-        setBulkAction('')
-        setBulkData({})
-        if (result.failed && result.failed.length > 0) {
-          alert(`Successfully processed ${result.success}, failed: ${result.failed.length}`)
-        }
+      const result = await res.json().catch(() => ({}))
+      if (!res.ok || !result.success) {
+        alert(result.error ?? 'Nothing was updated — the bulk action failed.')
+        return
+      }
+      await load()
+      setSelectedIds(new Set())
+      setBulkMenuOpen(false)
+      setBulkAction('')
+      setBulkData({})
+      if (result.failed && result.failed.length > 0) {
+        alert(`Successfully processed ${result.success}, failed: ${result.failed.length}`)
       }
     } catch (err) {
       console.error('Bulk action failed', err)
+      alert('Bulk action failed — check your connection and try again.')
     } finally {
       setBulkExecuting(false)
     }

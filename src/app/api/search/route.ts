@@ -30,16 +30,16 @@ export async function GET(request: Request) {
   const { role, organizationId } = session.user
   const where = checklistAccessWhere(session.user.id, role, organizationId)
 
-  // Search checklists by title and description
-  // Note: SQLite doesn't support mode: 'insensitive', so we use contains without it
-  // and do case-insensitive matching in post-processing
-  const searchQuery = q.toLowerCase()
+  // SQLite LIKE is case-insensitive for ASCII, so `contains` matches
+  // regardless of case; scoring below re-checks with toLowerCase.
+  // The third OR arm returns checklists whose only match is inside an item.
   const checklists = await prisma.checklist.findMany({
     where: {
       ...where,
       OR: [
         { title: { contains: q } },
         { description: { contains: q } },
+        { items: { some: { OR: [{ text: { contains: q } }, { notes: { contains: q } }] } } },
       ],
     },
     select: {

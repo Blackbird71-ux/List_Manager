@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { canAccessChecklist, canManageChecklist, checklistAccessWhere } from '@/lib/access'
+import { canManageChecklist, checklistAccessWhere } from '@/lib/access'
 import { logActivity } from '@/lib/activity'
 import { completeChecklist } from '@/lib/checklist-helpers'
 
@@ -14,7 +14,7 @@ const bulkActionSchema = z.object({
   data: z.object({
     assignedToId: z.string().optional(),
     priority: z.enum(['low', 'medium', 'high']).optional(),
-    dueDate: z.string().optional(),
+    dueDate: z.iso.date().or(z.iso.datetime()).optional(),
   }).optional(),
 })
 
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
           // Validate assignee is in same org
           const assignee = await prisma.user.findFirst({
             where: { id: data.assignedToId, organizationId },
-            select: { id: true },
+            select: { id: true, name: true },
           })
           if (!assignee) {
             failed.push(cl.id)
@@ -67,7 +67,7 @@ export async function POST(request: Request) {
             where: { id: cl.id },
             data: { assignedToId: data.assignedToId },
           })
-          logActivity(cl.id, session.user.name, 'assigned', `Bulk reassigned to ${assignee.id}`)
+          logActivity(cl.id, session.user.name, 'assigned', `to ${assignee.name} (bulk)`)
           success++
           break
         }
@@ -101,11 +101,9 @@ export async function POST(request: Request) {
             continue
           }
           if (cl.status === 'completed') continue // already done
-          await prisma.checklist.update({
-            where: { id: cl.id },
-            data: { status: 'completed', completedAt: new Date() },
-          })
-          logActivity(cl.id, session.user.name, 'completed', 'Bulk completed')
+          // The shared funnel, so recurring checklists spawn their next instance.
+          await completeChecklist(cl.id)
+          logActivity(cl.id, session.user.name, 'completed', 'bulk')
           success++
           break
         }

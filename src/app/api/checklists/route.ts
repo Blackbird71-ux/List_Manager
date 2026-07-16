@@ -170,12 +170,12 @@ export async function POST(request: Request) {
 
     // Generate reminder if offset is set
     const userIds = await collectReminderUserIds(checklist.id)
-    void generateRemindersForChecklist(
+    generateRemindersForChecklist(
       checklist.id,
       checklist.dueDate,
       checklist.reminderOffsetHours ?? null,
       userIds
-    )
+    ).catch((err) => console.error('Reminder generation failed:', err))
 
     return NextResponse.json({ checklist }, { status: 201 })
   }
@@ -221,12 +221,12 @@ export async function POST(request: Request) {
 
   // Generate reminder if offset is set
   const userIds = await collectReminderUserIds(checklist.id)
-  void generateRemindersForChecklist(
+  generateRemindersForChecklist(
     checklist.id,
     checklist.dueDate,
     checklist.reminderOffsetHours ?? null,
     userIds
-  )
+  ).catch((err) => console.error('Reminder generation failed:', err))
 
   if (checklist.assignedToId && checklist.assignedToId !== session.user.id) {
     await notify(

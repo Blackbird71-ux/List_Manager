@@ -183,7 +183,7 @@ model Checklist {
   recurrence  String    @default("none")
   dueDate     DateTime?
   completedAt DateTime?
-  // Reminder offset in hours before dueDate (-24 = 1 day before, null = no reminder)
+  // Reminder offset in hours before dueDate (24 = 1 day before, null = no reminder)
   reminderOffsetHours Int?
 
   templateId String?
@@ -220,8 +220,6 @@ model Checklist {
   @@index([templateId])
   @@index([dueDate])
   @@index([status, dueDate])
-  @@index([title])
-  @@index([description])
 }
 
 // A comment on a checklist — the conversation half of the activity feed.
@@ -235,7 +233,6 @@ model Comment {
   createdAt   DateTime  @default(now())
 
   @@index([checklistId, createdAt])
-  @@index([body])
 }
 
 // Scheduled reminders for checklists. Created automatically when a checklist
@@ -311,8 +308,6 @@ model ChecklistItem {
   @@index([checklistId])
   @@index([assignedToId])
   @@index([parentId])
-  @@index([text])
-  @@index([notes])
 }
 
 model CustomFieldValue {

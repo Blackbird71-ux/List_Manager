@@ -28,46 +28,50 @@ async function handle(request: Request) {
 
   const now = new Date()
 
-  // Find due reminders and mark them sent
+  // Due reminders for checklists that are still active.
   const reminders = await prisma.reminder.findMany({
     where: {
       sent: false,
       scheduledAt: { lte: now },
+      checklist: { status: 'active' },
     },
     include: {
-      checklist: { select: { id: true, title: true } },
-      user: { select: { id: true, email: true } },
+      checklist: { select: { id: true, title: true, dueDate: true } },
     },
   })
 
   const sent: string[] = []
 
   for (const reminder of reminders) {
-    // Mark as sent in the DB
-    await prisma.reminder.update({
-      where: { id: reminder.id },
+    // Claim it first: a concurrent run (cron + manual trigger) must not
+    // notify twice, so only the update that flips sent wins.
+    const claimed = await prisma.reminder.updateMany({
+      where: { id: reminder.id, sent: false },
       data: { sent: true, sentAt: now },
     })
+    if (claimed.count === 0) continue
 
-    // Send notification to the user
     await notify(
       reminder.userId,
       'Reminder: Checklist due soon',
-      `"${reminder.checklist.title}" is due ${(() => {
-        const diff = reminder.scheduledAt.getTime() - now.getTime()
-        const absDiff = Math.abs(diff)
-        const hours = Math.floor(absDiff / 3600000)
-        const mins = Math.floor((absDiff % 3600000) / 60000)
-        if (hours > 0) return hours === 1 ? '1 hour ago' : `${hours} hours ago`
-        return mins === 0 ? 'now' : `${mins} minutes ago`
-      })()}.`,
+      `"${reminder.checklist.title}" ${dueText(reminder.checklist.dueDate, now)}.`,
       reminder.checklistId
-    ).catch(() => undefined)
+    ).catch((err) => console.error('Reminder notification failed:', err))
 
     sent.push(reminder.id)
   }
 
   return NextResponse.json({ sent: sent.length, ids: sent })
+}
+
+function dueText(dueDate: Date | null, now: Date): string {
+  if (!dueDate) return 'is due soon'
+  const diffMins = Math.round((dueDate.getTime() - now.getTime()) / 60000)
+  if (diffMins <= 0) return 'is overdue'
+  if (diffMins < 60) return `is due in ${diffMins} minute${diffMins === 1 ? '' : 's'}`
+  const hours = Math.round(diffMins / 60)
+  if (hours < 48) return `is due in ${hours} hour${hours === 1 ? '' : 's'}`
+  return `is due in ${Math.round(hours / 24)} days`
 }
 
 export async function GET(request: Request) {

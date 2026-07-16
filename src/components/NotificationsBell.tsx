@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Bell } from 'lucide-react'
+import { Bell, X } from 'lucide-react'
 import type { ApiNotification } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -50,10 +50,15 @@ export function NotificationsBell() {
       await fetch(`/api/notifications/${n.id}`, { method: 'PATCH' })
       load()
     }
-    if (n.checklistId) {
-      setOpen(false)
-      router.push(`/checklists/${n.checklistId}`)
-    }
+    setOpen(false)
+    // Team-wide notices (e.g. the overdue digest) have no checklist, so
+    // fall back to the dashboard where the outstanding work is listed.
+    router.push(n.checklistId ? `/checklists/${n.checklistId}` : '/')
+  }
+
+  async function deleteNotification(id: string) {
+    await fetch(`/api/notifications/${id}`, { method: 'DELETE' })
+    load()
   }
 
   return (
@@ -86,11 +91,16 @@ export function NotificationsBell() {
               <p className="px-4 py-6 text-center text-sm text-faint">No notifications</p>
             )}
             {notifications.map((n) => (
-              <button
+              <div
                 key={n.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => openNotification(n)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') openNotification(n)
+                }}
                 className={cn(
-                  'block w-full border-b border-border-soft px-4 py-3 text-left hover:bg-hover',
+                  'group relative block w-full cursor-pointer border-b border-border-soft px-4 py-3 pr-9 text-left hover:bg-hover',
                   !n.read && 'bg-accent-soft'
                 )}
               >
@@ -99,7 +109,18 @@ export function NotificationsBell() {
                 <p className="mt-1 text-[11px] text-faint">
                   {new Date(n.createdAt).toLocaleString()}
                 </p>
-              </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    deleteNotification(n.id)
+                  }}
+                  aria-label="Delete notification"
+                  title="Delete notification"
+                  className="absolute right-2 top-2 rounded p-1 text-faint opacity-0 hover:bg-border-soft hover:text-ink focus:opacity-100 group-hover:opacity-100"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
             ))}
           </div>
         </div>

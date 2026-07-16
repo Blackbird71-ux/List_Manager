@@ -7,7 +7,8 @@ import { formatInTz, todayStart } from '@/lib/timezone'
 /**
  * Generate a Reminder record for a checklist if reminderOffsetHours is set
  * and a dueDate exists. The reminder fires at dueDate - offset hours.
- * Deletes any existing reminder for the checklist first so updates are idempotent.
+ * Always deletes existing reminders first, so clearing the offset or the
+ * due date cancels anything still pending.
  */
 export async function generateRemindersForChecklist(
   checklistId: string,
@@ -15,10 +16,9 @@ export async function generateRemindersForChecklist(
   reminderOffsetHours: number | null | undefined,
   userIds: string[]
 ): Promise<void> {
-  if (!reminderOffsetHours || !dueDate || userIds.length === 0) return
+  await prisma.reminder.deleteMany({ where: { checklistId } })
 
-  // Remove any old reminders for this checklist (idempotent update)
-  await prisma.reminder.deleteMany({ where: { checklistId } }).catch(() => undefined)
+  if (!reminderOffsetHours || !dueDate || userIds.length === 0) return
 
   const scheduledAt = new Date(dueDate.getTime() - reminderOffsetHours * 3600000)
 
@@ -175,6 +175,7 @@ interface CloneSource {
   organizationId: string
   createdById: string
   assignedToId: string | null
+  reminderOffsetHours: number | null
   items: { text: string; priority: string | null; assignedToId: string | null }[]
 }
 
@@ -198,6 +199,7 @@ async function cloneForNextRun(
       recurrence: recurrence ?? source.recurrence,
       visibility: source.visibility,
       dueDate,
+      reminderOffsetHours: source.reminderOffsetHours,
       templateId: source.templateId,
       // The clone copies the source's items, so it ran from the same version.
       templateVersion: source.templateVersion,
@@ -283,6 +285,10 @@ export async function runChecklistAgain(params: {
     return next
   })
 
+  const reminderUserIds = await collectReminderUserIds(copy.id)
+  generateRemindersForChecklist(copy.id, params.dueDate, source.reminderOffsetHours, reminderUserIds)
+    .catch((err) => console.error('Reminder generation failed:', err))
+
   if (source.assignedToId && source.assignedToId !== params.actorId) {
     const dueLabel = params.dueDate
       ? ` Due ${formatInTz(params.dueDate, { day: 'numeric', month: 'short', year: 'numeric' })}.`
@@ -342,6 +348,8 @@ export async function completeChecklist(checklistId: string): Promise<{ spawnedI
       where: { id: checklistId },
       data: { status: 'completed', completedAt: new Date() },
     })
+    // A finished checklist needs no "due soon" nudge.
+    await prisma.reminder.deleteMany({ where: { checklistId, sent: false } })
   }
 
   // Respawn (Notion-style: completing a recurring list creates the next one)
@@ -397,6 +405,13 @@ async function spawnNextInstance(
 
     return next
   })
+
+  // The clone keeps the reminder setting, so schedule its reminders too.
+  if (spawned) {
+    const userIds = await collectReminderUserIds(spawned.id)
+    generateRemindersForChecklist(spawned.id, nextDue, checklist.reminderOffsetHours, userIds)
+      .catch((err) => console.error('Reminder generation failed:', err))
+  }
 
   return { spawned, nextDue }
 }

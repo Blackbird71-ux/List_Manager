@@ -173,12 +173,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     })
     if (updated) {
       const userIds = await collectReminderUserIds(id)
-      void generateRemindersForChecklist(
+      generateRemindersForChecklist(
         id,
         updated.dueDate,
         updated.reminderOffsetHours ?? null,
         userIds
-      )
+      ).catch((err) => console.error('Reminder generation failed:', err))
     }
   }
 
