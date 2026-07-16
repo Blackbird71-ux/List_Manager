@@ -91,6 +91,7 @@ model User {
   comments          Comment[]
   pushSubscriptions PushSubscription[]
   departments       DepartmentMember[]
+  reminders         Reminder[]
 
   @@index([organizationId])
 }
@@ -182,6 +183,8 @@ model Checklist {
   recurrence  String    @default("none")
   dueDate     DateTime?
   completedAt DateTime?
+  // Reminder offset in hours before dueDate (-24 = 1 day before, null = no reminder)
+  reminderOffsetHours Int?
 
   templateId String?
   template   Template? @relation(fields: [templateId], references: [id], onDelete: SetNull)
@@ -209,11 +212,16 @@ model Checklist {
   comments    Comment[]
   activity    ActivityLog[]
   departments ChecklistDepartment[]
+  reminders   Reminder[]
 
   @@index([organizationId, status])
   @@index([assignedToId])
   @@index([createdById])
   @@index([templateId])
+  @@index([dueDate])
+  @@index([status, dueDate])
+  @@index([title])
+  @@index([description])
 }
 
 // A comment on a checklist — the conversation half of the activity feed.
@@ -227,6 +235,24 @@ model Comment {
   createdAt   DateTime  @default(now())
 
   @@index([checklistId, createdAt])
+  @@index([body])
+}
+
+// Scheduled reminders for checklists. Created automatically when a checklist
+// has a reminder offset, or manually by a user.
+model Reminder {
+  id          String   @id @default(cuid())
+  checklistId String
+  checklist   Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scheduledAt DateTime // when to send the reminder
+  sent        Boolean  @default(false)
+  sentAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([scheduledAt, sent])
+  @@index([userId, sent])
 }
 
 // Audit trail of who changed what on a checklist. Actor name is denormalized
@@ -270,6 +296,11 @@ model ChecklistItem {
   dueDate     DateTime?
   sortOrder   Int       @default(0)
 
+  // Subtask hierarchy (self-referencing)
+  parentId    String?
+  parent      ChecklistItem? @relation("SubtaskHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  subtasks    ChecklistItem[] @relation("SubtaskHierarchy")
+
   assignedToId String?
   assignedTo   User?   @relation("ItemAssignee", fields: [assignedToId], references: [id])
   checkedByName String?
@@ -279,6 +310,9 @@ model ChecklistItem {
 
   @@index([checklistId])
   @@index([assignedToId])
+  @@index([parentId])
+  @@index([text])
+  @@index([notes])
 }
 
 model CustomFieldValue {
@@ -319,4 +353,5 @@ model Notification {
   createdAt   DateTime @default(now())
 
   @@index([userId, createdAt])
+  @@index([userId, read])
 }

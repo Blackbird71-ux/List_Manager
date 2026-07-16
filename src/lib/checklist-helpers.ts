@@ -4,6 +4,61 @@ import { notify } from '@/lib/notifications'
 import { logActivity } from '@/lib/activity'
 import { formatInTz, todayStart } from '@/lib/timezone'
 
+/**
+ * Generate a Reminder record for a checklist if reminderOffsetHours is set
+ * and a dueDate exists. The reminder fires at dueDate - offset hours.
+ * Deletes any existing reminder for the checklist first so updates are idempotent.
+ */
+export async function generateRemindersForChecklist(
+  checklistId: string,
+  dueDate: Date | null,
+  reminderOffsetHours: number | null | undefined,
+  userIds: string[]
+): Promise<void> {
+  if (!reminderOffsetHours || !dueDate || userIds.length === 0) return
+
+  // Remove any old reminders for this checklist (idempotent update)
+  await prisma.reminder.deleteMany({ where: { checklistId } }).catch(() => undefined)
+
+  const scheduledAt = new Date(dueDate.getTime() - reminderOffsetHours * 3600000)
+
+  await prisma.reminder.createMany({
+    data: userIds.map((userId) => ({
+      checklistId,
+      userId,
+      scheduledAt: scheduledAt.toISOString(),
+    })),
+  })
+}
+
+/**
+ * Collect all user IDs that should receive a reminder for a checklist:
+ * creator, assignee (if different), and any shared users.
+ */
+export async function collectReminderUserIds(
+  checklistId: string
+): Promise<string[]> {
+  const [checklist, shares] = await Promise.all([
+    prisma.checklist.findUnique({
+      where: { id: checklistId },
+      select: { createdById: true, assignedToId: true },
+    }),
+    prisma.checklistShare.findMany({
+      where: { checklistId },
+      select: { userId: true },
+    }),
+  ])
+
+  if (!checklist) return []
+
+  const ids = new Set<string>()
+  ids.add(checklist.createdById)
+  if (checklist.assignedToId) ids.add(checklist.assignedToId)
+  for (const s of shares) ids.add(s.userId)
+
+  return [...ids]
+}
+
 const checklistInclude = {
   items: {
     orderBy: { sortOrder: 'asc' as const },
@@ -40,6 +95,7 @@ export async function createChecklistFromTemplate(params: {
   priority?: string
   visibility?: string
   departmentIds?: string[]
+  reminderOffsetHours?: number | null
 }) {
   const template = await prisma.template.findFirst({
     where: { id: params.templateId, organizationId: params.organizationId },
@@ -65,6 +121,7 @@ export async function createChecklistFromTemplate(params: {
       priority: params.priority ?? 'medium',
       visibility,
       dueDate: params.dueDate ?? null,
+      reminderOffsetHours: params.reminderOffsetHours ?? null,
       templateId: template.id,
       templateVersion: template.version,
       organizationId: params.organizationId,

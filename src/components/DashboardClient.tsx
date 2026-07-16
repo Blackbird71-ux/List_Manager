@@ -10,7 +10,9 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Trash2,
   User as UserIcon,
+  Users,
 } from 'lucide-react'
 import type { ApiChecklist, ApiTemplate, ApiUser } from '@/lib/types'
 import { DepartmentPicker } from '@/components/DepartmentPicker'
@@ -34,6 +36,61 @@ export function DashboardClient({ currentUserId }: { currentUserId: string }) {
   const [assigneeFilter, setAssigneeFilter] = useState('')
   const [search, setSearch] = useState('')
   const [showCreate, setShowCreate] = useState(false)
+
+  // Bulk selection state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkMenuOpen, setBulkMenuOpen] = useState(false)
+  const [bulkAction, setBulkAction] = useState<'assign' | 'priority' | 'dueDate' | ''>('')
+  const [bulkData, setBulkData] = useState<{ assignedToId?: string; priority?: string; dueDate?: string }>({})
+  const [bulkExecuting, setBulkExecuting] = useState(false)
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const selectAllFiltered = useCallback(() => {
+    setSelectedIds(new Set(checklists.map((c) => c.id)))
+  }, [checklists])
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set())
+  }, [])
+
+  async function executeBulk() {
+    if (selectedIds.size === 0 || !bulkAction) return
+    setBulkExecuting(true)
+    try {
+      const res = await fetch('/api/checklists/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ids: Array.from(selectedIds),
+          action: bulkAction,
+          data: bulkData,
+        }),
+      })
+      const result = await res.json()
+      if (result.success > 0) {
+        await load()
+        setSelectedIds(new Set())
+        setBulkMenuOpen(false)
+        setBulkAction('')
+        setBulkData({})
+        if (result.failed && result.failed.length > 0) {
+          alert(`Successfully processed ${result.success}, failed: ${result.failed.length}`)
+        }
+      }
+    } catch (err) {
+      console.error('Bulk action failed', err)
+    } finally {
+      setBulkExecuting(false)
+    }
+  }
 
   const load = useCallback(async () => {
     try {
@@ -170,6 +227,83 @@ export function DashboardClient({ currentUserId }: { currentUserId: string }) {
         >
           <Plus className="h-4 w-4" /> New checklist
         </button>
+
+        {selectedIds.size > 0 && (
+          <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-xl border border-accent/30 bg-panel/95 p-3 shadow-xl backdrop-blur">
+            <span className="text-sm font-semibold text-accent">{selectedIds.size} selected</span>
+            <button onClick={selectAllFiltered} className="text-sm text-muted hover:text-ink">Select all</button>
+            <span className="text-faint">|</span>
+            <button onClick={clearSelection} className="text-sm text-muted hover:text-ink">Clear</button>
+            <span className="text-faint">|</span>
+            <div className="relative">
+              <button
+                onClick={() => setBulkMenuOpen(!bulkMenuOpen)}
+                className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-ink hover:bg-accent-2"
+              >
+                <Users className="h-4 w-4" /> Actions
+              </button>
+              {bulkMenuOpen && (
+                <div className="absolute right-0 bottom-full mb-2 w-56 rounded-xl border border-border bg-panel p-3 shadow-xl">
+                  <select
+                    value={bulkAction}
+                    onChange={(e) => setBulkAction(e.target.value as 'assign' | 'priority' | 'dueDate' | '')}
+                    className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm"
+                  >
+                    <option value="">Choose action…</option>
+                    <option value="assign">Assign to…</option>
+                    <option value="priority">Set priority</option>
+                    <option value="dueDate">Set due date</option>
+                  </select>
+
+                  {bulkAction === 'assign' && (
+                    <select
+                      value={bulkData.assignedToId || ''}
+                      onChange={(e) => setBulkData((d) => ({ ...d, assignedToId: e.target.value }))}
+                      className="mt-2 w-full rounded-lg border border-border bg-field px-3 py-2 text-sm"
+                    >
+                      <option value="">Select user…</option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.id}>{u.name}</option>
+                      ))}
+                    </select>
+                  )}
+
+                  {bulkAction === 'priority' && (
+                    <select
+                      value={bulkData.priority || ''}
+                      onChange={(e) => setBulkData((d) => ({ ...d, priority: e.target.value }))}
+                      className="mt-2 w-full rounded-lg border border-border bg-field px-3 py-2 text-sm"
+                    >
+                      <option value="">Priority…</option>
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                    </select>
+                  )}
+
+                  {bulkAction === 'dueDate' && (
+                    <input
+                      type="date"
+                      value={bulkData.dueDate || ''}
+                      onChange={(e) => setBulkData((d) => ({ ...d, dueDate: e.target.value }))}
+                      className="mt-2 w-full rounded-lg border border-border bg-field px-3 py-2 text-sm"
+                    />
+                  )}
+
+                  {bulkAction && (
+                    <button
+                      onClick={executeBulk}
+                      disabled={bulkExecuting}
+                      className="mt-3 w-full rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-accent-ink hover:bg-accent-2 disabled:opacity-50"
+                    >
+                      {bulkExecuting ? 'Processing…' : 'Execute'}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Checklist cards */}
@@ -186,26 +320,52 @@ export function DashboardClient({ currentUserId }: { currentUserId: string }) {
             const pct = total > 0 ? Math.round((done / total) * 100) : 0
             const overdue =
               c.status === 'active' && c.dueDate && new Date(c.dueDate) < new Date()
+            const isSelected = selectedIds.has(c.id)
             return (
-              <Link
+              <div
                 key={c.id}
-                href={`/checklists/${c.id}`}
-                className="rounded-xl border border-border bg-panel p-4 transition hover:border-accent hover:shadow-sm"
+                onClick={(e) => {
+                  // Don't toggle when clicking checkbox or links
+                  if ((e.target as HTMLElement).closest('input[type="checkbox"]') || (e.target as HTMLElement).closest('a')) return
+                  toggleSelect(c.id)
+                }}
+                className={`group rounded-xl border p-4 transition hover:shadow-sm cursor-pointer ${
+                  isSelected
+                    ? 'border-accent bg-accent/5'
+                    : 'border-border bg-panel hover:border-accent'
+                }`}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <h3 className="font-semibold text-ink">{c.title}</h3>
-                  {c.status === 'completed' ? (
-                    <CheckCircle2 className="h-5 w-5 shrink-0 text-ok" />
-                  ) : (
-                    <span
-                      className={cn(
-                        'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold',
-                        PRIORITY_STYLES[c.priority] ?? PRIORITY_STYLES.low
-                      )}
-                    >
-                      {c.priority}
-                    </span>
-                  )}
+                <div className="flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={(e) => {
+                      e.stopPropagation()
+                      toggleSelect(c.id)
+                    }}
+                    className="mt-1 h-4 w-4 shrink-0 rounded border-border text-accent focus:ring-accent cursor-pointer"
+                  />
+                  <Link
+                    href={`/checklists/${c.id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex-1 block"
+                  >
+                    <h3 className="font-semibold text-ink group-hover:text-accent transition-colors">{c.title}</h3>
+                  </Link>
+                  <div className="shrink-0">
+                    {c.status === 'completed' ? (
+                      <CheckCircle2 className="h-5 w-5 shrink-0 text-ok" />
+                    ) : (
+                      <span
+                        className={cn(
+                          'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold',
+                          PRIORITY_STYLES[c.priority] ?? PRIORITY_STYLES.low
+                        )}
+                      >
+                        {c.priority}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
@@ -251,7 +411,7 @@ export function DashboardClient({ currentUserId }: { currentUserId: string }) {
                     </div>
                   </div>
                 )}
-              </Link>
+              </div>
             )
           })}
         </div>

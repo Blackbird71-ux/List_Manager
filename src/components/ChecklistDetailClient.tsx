@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   ArrowLeft,
+  Bell,
   Calendar,
   CheckCircle2,
   Download,
@@ -285,7 +286,7 @@ export function ChecklistDetailClient({
         </div>
 
         {/* Meta controls */}
-        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <div className="mt-4 grid gap-3 sm:grid-cols-4">
           <label className="block text-sm">
             <span className="mb-1 flex items-center gap-1 text-xs font-medium text-muted">
               <Calendar className="h-3 w-3" /> Due date
@@ -302,6 +303,31 @@ export function ChecklistDetailClient({
               }
               className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
             />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 flex items-center gap-1 text-xs font-medium text-muted">
+              <Bell className="h-3 w-3" /> Reminder
+            </span>
+            <select
+              value={checklist.reminderOffsetHours ?? ''}
+              onChange={(e) =>
+                patchChecklist({
+                  reminderOffsetHours: e.target.value ? Number(e.target.value) : null,
+                })
+              }
+              className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
+              disabled={!checklist.dueDate}
+              title="Set reminder offset (requires a due date)"
+            >
+              <option value="">No reminder</option>
+              <option value={1}>1 hour before</option>
+              <option value={2}>2 hours before</option>
+              <option value={6}>6 hours before</option>
+              <option value={12}>12 hours before</option>
+              <option value={24}>1 day before</option>
+              <option value={48}>2 days before</option>
+              <option value={72}>3 days before</option>
+            </select>
           </label>
           <label className="block text-sm">
             <span className="mb-1 flex items-center gap-1 text-xs font-medium text-muted">

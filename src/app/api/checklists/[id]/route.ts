@@ -4,7 +4,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { RECURRENCE_OPTIONS } from '@/lib/recurrence'
 import { canAccessChecklist, canManageChecklist, checklistAccessWhere } from '@/lib/access'
-import { completeChecklist, getChecklistInclude } from '@/lib/checklist-helpers'
+import { completeChecklist, getChecklistInclude, generateRemindersForChecklist, collectReminderUserIds } from '@/lib/checklist-helpers'
 import { notify } from '@/lib/notifications'
 import { logActivity } from '@/lib/activity'
 
@@ -33,6 +33,7 @@ const patchSchema = z.object({
   recurrence: z.enum(RECURRENCE_OPTIONS).optional(),
   dueDate: z.iso.datetime().nullish(),
   assignedToId: z.string().nullish(),
+  reminderOffsetHours: z.number().int().nullish(),
   status: z.enum(['active', 'completed']).optional(),
   visibility: z.enum(['team', 'private', 'department']).optional(),
   departmentIds: z.array(z.string().min(1)).max(50).optional(),
@@ -68,6 +69,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     fieldValues,
     dueDate,
     assignedToId,
+    reminderOffsetHours,
     visibility,
     departmentIds,
     sharedUserIds,
@@ -115,6 +117,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const data: Record<string, unknown> = { ...scalars }
   if (dueDate !== undefined) data.dueDate = dueDate ? new Date(dueDate) : null
   if (assignedToId !== undefined) data.assignedToId = assignedToId ?? null
+  if (reminderOffsetHours !== undefined) data.reminderOffsetHours = reminderOffsetHours ?? null
   if (visibility !== undefined) data.visibility = visibility
   if (status === 'active' && existing.status === 'completed') {
     data.status = 'active'
@@ -161,6 +164,23 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   await prisma.checklist.update({ where: { id }, data })
+
+  // Regenerate reminders if dueDate or reminderOffsetHours changed
+  if (dueDate !== undefined || reminderOffsetHours !== undefined) {
+    const updated = await prisma.checklist.findUnique({
+      where: { id },
+      select: { dueDate: true, reminderOffsetHours: true },
+    })
+    if (updated) {
+      const userIds = await collectReminderUserIds(id)
+      void generateRemindersForChecklist(
+        id,
+        updated.dueDate,
+        updated.reminderOffsetHours ?? null,
+        userIds
+      )
+    }
+  }
 
   // Completion goes through the shared funnel so recurrence spawns exactly once.
   if (status === 'completed' && existing.status !== 'completed') {

@@ -4,7 +4,12 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { RECURRENCE_OPTIONS } from '@/lib/recurrence'
 import { checklistAccessWhere } from '@/lib/access'
-import { createChecklistFromTemplate, getChecklistInclude } from '@/lib/checklist-helpers'
+import {
+  createChecklistFromTemplate,
+  getChecklistInclude,
+  generateRemindersForChecklist,
+  collectReminderUserIds,
+} from '@/lib/checklist-helpers'
 import { logActivity } from '@/lib/activity'
 import { notify } from '@/lib/notifications'
 
@@ -74,6 +79,7 @@ const fromTemplateSchema = z.object({
   priority: z.enum(['low', 'medium', 'high']).optional(),
   visibility: z.enum(['team', 'private', 'department']).optional(),
   departmentIds: z.array(z.string().min(1)).max(50).default([]),
+  reminderOffsetHours: z.number().int().nullish(),
 })
 
 const adHocSchema = z.object({
@@ -87,6 +93,7 @@ const adHocSchema = z.object({
   departmentIds: z.array(z.string().min(1)).max(50).default([]),
   dueDate: z.iso.datetime().nullish(),
   assignedToId: z.string().nullish(),
+  reminderOffsetHours: z.number().int().nullish(),
   items: z.array(z.object({ text: z.string().trim().min(1).max(500) })).default([]),
 })
 
@@ -154,11 +161,22 @@ export async function POST(request: Request) {
       priority: parsed.data.priority,
       visibility: parsed.data.visibility,
       departmentIds: parsed.data.visibility === 'department' ? parsed.data.departmentIds : [],
+      reminderOffsetHours: parsed.data.reminderOffsetHours ?? null,
     })
     if (!checklist) {
       return NextResponse.json({ error: 'Template not found' }, { status: 404 })
     }
     logActivity(checklist.id, session.user.name, 'created', 'from template')
+
+    // Generate reminder if offset is set
+    const userIds = await collectReminderUserIds(checklist.id)
+    void generateRemindersForChecklist(
+      checklist.id,
+      checklist.dueDate,
+      checklist.reminderOffsetHours ?? null,
+      userIds
+    )
+
     return NextResponse.json({ checklist }, { status: 201 })
   }
 
@@ -185,6 +203,7 @@ export async function POST(request: Request) {
       priority: data.priority,
       visibility: data.visibility,
       dueDate: data.dueDate ? new Date(data.dueDate) : null,
+      reminderOffsetHours: data.reminderOffsetHours ?? null,
       organizationId: session.user.organizationId,
       createdById: session.user.id,
       assignedToId: data.assignedToId ?? null,
@@ -199,6 +218,15 @@ export async function POST(request: Request) {
   })
 
   logActivity(checklist.id, session.user.name, 'created')
+
+  // Generate reminder if offset is set
+  const userIds = await collectReminderUserIds(checklist.id)
+  void generateRemindersForChecklist(
+    checklist.id,
+    checklist.dueDate,
+    checklist.reminderOffsetHours ?? null,
+    userIds
+  )
 
   if (checklist.assignedToId && checklist.assignedToId !== session.user.id) {
     await notify(

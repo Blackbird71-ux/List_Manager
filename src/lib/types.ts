@@ -92,6 +92,7 @@ export interface ApiChecklist {
   completedAt: string | null
   nextInstanceId: string | null
   visibility: string // "team" | "department" | "private"
+  reminderOffsetHours: number | null
   createdAt: string
   items: ApiChecklistItem[]
   fieldValues: ApiCustomFieldValue[]

@@ -10,6 +10,7 @@ import {
   LayoutTemplate,
   ListChecks,
   LogOut,
+  Search as SearchIcon,
   Settings,
   UserCheck,
   Users,
@@ -17,7 +18,9 @@ import {
 } from 'lucide-react'
 import { HelpMenu } from '@/components/HelpMenu'
 import { NotificationsBell } from '@/components/NotificationsBell'
+import { SearchOverlay } from '@/components/SearchOverlay'
 import { cn } from '@/lib/utils'
+import { useState, useEffect } from 'react'
 
 interface AppShellProps {
   user: { name: string; role: string }
@@ -26,6 +29,21 @@ interface AppShellProps {
 
 export function AppShell({ user, children }: AppShellProps) {
   const pathname = usePathname()
+  const [searchOpen, setSearchOpen] = useState(false)
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setSearchOpen((prev) => !prev)
+      }
+      if (e.key === 'Escape' && searchOpen) {
+        setSearchOpen(false)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [searchOpen])
 
   const links = [
     { href: '/', label: 'Checklists', icon: ListChecks },
@@ -67,6 +85,15 @@ export function AppShell({ user, children }: AppShellProps) {
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={() => setSearchOpen(true)}
+              className="flex items-center gap-2 rounded-lg border border-border bg-field px-3 py-1.5 text-sm text-muted hover:border-accent"
+              title="Search (⌘K)"
+            >
+              <SearchIcon className="h-4 w-4" />
+              <span className="hidden sm:inline">Search…</span>
+              <kbd className="hidden ml-1 rounded border border-border bg-hover px-1.5 py-0.5 text-[10px] font-medium sm:inline">⌘K</kbd>
+            </button>
             <HelpMenu />
             <NotificationsBell />
             <Link
@@ -96,6 +123,8 @@ export function AppShell({ user, children }: AppShellProps) {
       </header>
 
       <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
+
+      <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>
   )
 }
