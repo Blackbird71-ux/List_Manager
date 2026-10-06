@@ -151,12 +151,34 @@ if [ -f /etc/cloudflared/config.yml ]; then
   printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > /etc/resolv.conf
 
   (
+    # Also restart if cloudflared hangs without exiting (e.g. boot after a power
+    # cut before the internet is back): poll /ready, kill after 60s not-ready.
+    TUNNEL_STALL_SECS=60
     while true; do
       su-exec nextjs:nodejs cloudflared tunnel \
         --no-autoupdate \
         --metrics 127.0.0.1:20241 \
         --config /etc/cloudflared/config.yml \
-        run
+        run &
+      CF_PID=$!
+      NOT_READY=0
+      while kill -0 "$CF_PID" 2>/dev/null; do
+        sleep 10
+        if wget -q -T 5 -O /dev/null http://127.0.0.1:20241/ready 2>/dev/null; then
+          NOT_READY=0
+        else
+          NOT_READY=$((NOT_READY + 10))
+          if [ "$NOT_READY" -ge "$TUNNEL_STALL_SECS" ]; then
+            echo "Cloudflare tunnel not ready for ${NOT_READY}s - killing for restart..."
+            kill "$CF_PID" 2>/dev/null
+            sleep 2
+            kill -9 "$CF_PID" 2>/dev/null
+            break
+          fi
+        fi
+      done
+      wait "$CF_PID" 2>/dev/null
+      printf 'nameserver 1.1.1.1\nnameserver 8.8.8.8\n' > /etc/resolv.conf
       echo "   Cloudflare tunnel exited - restarting in 5 seconds..."
       sleep 5
     done
