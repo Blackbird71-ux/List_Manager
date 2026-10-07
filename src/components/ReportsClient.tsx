@@ -16,6 +16,7 @@ interface ReportData {
     assignedActive: number
     completedInWindow: number
     overdueNow: number
+    lateRate: number | null
     itemsChecked: number
   }[]
   byCategory: {
@@ -25,7 +26,12 @@ interface ReportData {
     overdueNow: number
     avgCompletionHours: number | null
   }[]
-  byTemplate: { templateTitle: string; runs: number; avgCompletionHours: number | null }[]
+  byTemplate: {
+    templateTitle: string
+    runs: number
+    avgCompletionHours: number | null
+    lateRate: number | null
+  }[]
   trend: { weekStart: string; completedCount: number }[]
 }
 
@@ -151,6 +157,7 @@ export function ReportsClient() {
                     <th className="pb-2 pr-3 text-right font-medium">Assigned active</th>
                     <th className="pb-2 pr-3 text-right font-medium">Completed</th>
                     <th className="pb-2 pr-3 text-right font-medium">Overdue</th>
+                    <th className="pb-2 pr-3 text-right font-medium">Finished late</th>
                     <th className="pb-2 text-right font-medium">Items ticked</th>
                   </tr>
                 </thead>
@@ -168,6 +175,7 @@ export function ReportsClient() {
                       >
                         {u.overdueNow}
                       </td>
+                      <td className="py-2 pr-3 text-right">{u.lateRate === null ? '—' : `${u.lateRate}%`}</td>
                       <td className="py-2 text-right">{u.itemsChecked}</td>
                     </tr>
                   ))}
@@ -190,7 +198,8 @@ export function ReportsClient() {
                       <th className="pb-2 pr-3 text-right font-medium">Active</th>
                       <th className="pb-2 pr-3 text-right font-medium">Completed</th>
                       <th className="pb-2 pr-3 text-right font-medium">Overdue</th>
-                      <th className="pb-2 text-right font-medium">Avg completion</th>
+                      <th className="pb-2 pr-3 text-right font-medium">Avg completion</th>
+                      <th className="pb-2 text-right font-medium">Finished late</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -239,7 +248,8 @@ export function ReportsClient() {
                       >
                         <td className="py-2 pr-3">{t.templateTitle}</td>
                         <td className="py-2 pr-3 text-right">{t.runs}</td>
-                        <td className="py-2 text-right">{hoursLabel(t.avgCompletionHours)}</td>
+                        <td className="py-2 pr-3 text-right">{hoursLabel(t.avgCompletionHours)}</td>
+                        <td className="py-2 text-right">{t.lateRate === null ? '—' : `${t.lateRate}%`}</td>
                       </tr>
                     ))}
                   </tbody>

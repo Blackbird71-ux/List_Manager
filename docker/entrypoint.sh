@@ -118,7 +118,7 @@ if [ -f "$DB_PATH" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 5. Cron jobs: daily backup (03:00), recurrence spawn (06:00), overdue digest (07:00), escalation (08:00)
+# 5. Cron jobs: daily backup (03:00), recurrence spawn (06:00), overdue digest (07:00), escalation (08:00), personal digest (07:30)
 # ---------------------------------------------------------------------------
 echo ""
 echo ">> [5/6] Configuring scheduled jobs..."
@@ -137,9 +137,10 @@ export DIGEST_SECRET
   echo "30 3 * * * wget -q -O- --header \"x-digest-secret: $DIGEST_SECRET\" http://127.0.0.1:3000/api/scheduler/drive-backup >> /data/backups/drive-backup.log 2>&1"
   echo "0 7 * * * wget -q -O- --header \"x-digest-secret: $DIGEST_SECRET\" http://127.0.0.1:3000/api/digest/overdue >> /data/backups/digest.log 2>&1"
   echo "0 8 * * * wget -q -O- --header \"x-digest-secret: $DIGEST_SECRET\" http://127.0.0.1:3000/api/scheduler/escalation >> /data/backups/scheduler.log 2>&1"
+  echo "30 7 * * * wget -q -O- --header \"x-digest-secret: $DIGEST_SECRET\" http://127.0.0.1:3000/api/scheduler/my-digest >> /data/backups/digest.log 2>&1"
 } > /etc/crontabs/root
 crond -b -l 2
-echo "   ok: cron daemon started (backup 03:00, Drive backup 03:30, reminders every 5min, recurrence spawn 06:00, overdue digest 07:00, escalation 08:00)"
+echo "   ok: cron daemon started (backup 03:00, Drive backup 03:30, reminders every 5min, recurrence spawn 06:00, overdue digest 07:00, escalation 08:00, personal digest 07:30)"
 
 # ---------------------------------------------------------------------------
 # 6. Optional: Cloudflare tunnel

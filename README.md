@@ -37,6 +37,11 @@ due date advanced by the recurrence interval.
 - **Photo capture** — on a phone, take a photo straight into an item.
 - **Escalation** — admins and managers are notified when a list has been overdue
   for a set number of days (Settings, primary admin).
+- **Personal digest** — at 07:30 each person with email reminders on gets one email
+  listing their assigned lists and items that are overdue or due in the next 7 days
+  (nothing is sent on a clear day).
+- **Reports** — per person and per template: average completion time and the
+  percentage of lists finished after their due date.
 - **Webhook** — a signed JSON event is posted to an https address when a list is
   completed or signed off (Settings, primary admin).
 - **Reminders** — set a due date plus a reminder offset (1 hour to 3 days before)
@@ -161,7 +166,7 @@ docker compose logs -f            # watch migrations + startup
   with a pre-deploy DB backup kept in `/data/backups` (last 10).
 - A cron job inside the container backs up the DB daily at 03:00 (last 14 kept,
   local to the NAS), copies it to Google Drive at 03:30 (see below) and sends the
-  overdue digest at 07:00 and escalation of long-overdue lists at 08:00.
+  overdue digest at 07:00, the personal digest at 07:30 and escalation of long-overdue lists at 08:00.
   Running again a list or recurring copy duplicates its supporting documents as
   separate files; deleting a list or item removes its files from disk.
 - Uploaded files (item attachments and supporting documents) are stored under

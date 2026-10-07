@@ -15,6 +15,14 @@ function avgHours(spans: number[]): number | null {
   return Math.round((ms / 3600000) * 10) / 10
 }
 
+// Share of finished lists (with a due date) that were completed after it, as a percentage.
+function lateRate(done: { completedAt: Date | null; dueDate: Date | null }[]): number | null {
+  const dated = done.filter((c) => c.dueDate && c.completedAt)
+  if (dated.length === 0) return null
+  const late = dated.filter((c) => (c.completedAt as Date) > (c.dueDate as Date)).length
+  return Math.round((late / dated.length) * 100)
+}
+
 export async function GET(request: Request) {
   const session = await auth()
   if (!session?.user?.id) {
@@ -80,6 +88,7 @@ export async function GET(request: Request) {
     name: u.name,
     assignedActive: active.filter((c) => c.assignedToId === u.id).length,
     completedInWindow: completed.filter((c) => c.assignedToId === u.id).length,
+    lateRate: lateRate(completed.filter((c) => c.assignedToId === u.id)),
     overdueNow: active.filter((c) => c.assignedToId === u.id && isOverdue(c)).length,
     itemsChecked: checkedByName.get(u.name) ?? 0,
   }))
@@ -110,6 +119,7 @@ export async function GET(request: Request) {
       templateTitle,
       runs: spans.length,
       avgCompletionHours: avgHours(spans),
+      lateRate: lateRate(completed.filter((c) => c.template?.title === templateTitle)),
     }))
     .sort((a, b) => b.runs - a.runs)
 
