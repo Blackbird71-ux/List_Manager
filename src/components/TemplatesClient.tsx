@@ -6,6 +6,8 @@ import {
   Archive,
   ArchiveRestore,
   Download,
+  Indent,
+  Outdent,
   Pencil,
   Play,
   Plus,
@@ -25,17 +27,18 @@ interface DraftItem {
   text: string
   priority: string
   heading?: boolean
+  indent?: number // 1 = subtask of the item above
 }
 
 // A template pre-filled from an imported file; saved as a new template.
 interface ImportedDraft {
   title: string
-  items: { text: string; section: string }[]
+  items: { text: string; section: string; indent: number }[]
   fields: string[]
 }
 
 function itemsToRows(
-  items: { text: string; priority: string | null; section: string }[]
+  items: { text: string; priority: string | null; section: string; indent: number }[]
 ): DraftItem[] {
   const rows: DraftItem[] = []
   let current = ''
@@ -44,7 +47,7 @@ function itemsToRows(
       current = i.section
       if (current) rows.push({ text: current, priority: '', heading: true })
     }
-    rows.push({ text: i.text, priority: i.priority ?? '' })
+    rows.push({ text: i.text, priority: i.priority ?? '', indent: i.indent })
   }
   return rows
 }
@@ -470,11 +473,17 @@ function TemplateEditor({
         description: description.trim(),
         category: category.trim() || 'general',
         recurrence,
-        items: items.reduce<{ text: string; priority: string | null; section: string }[]>(
+        items: items.reduce<
+          { text: string; priority: string | null; section: string; indent: number }[]
+        >(
           (acc, row) => {
             const text = row.text.trim()
             if (row.heading) section = text
-            else if (text) acc.push({ text, priority: row.priority || null, section })
+            else if (text) {
+              // A subtask needs an item above it in the same section.
+              const indent = row.indent && acc.length > 0 && acc[acc.length - 1].section === section ? 1 : 0
+              acc.push({ text, priority: row.priority || null, section, indent })
+            }
             return acc
           },
           []
@@ -576,7 +585,7 @@ function TemplateEditor({
           <label className="mb-1 block text-sm font-medium">Checklist items</label>
           <div className="space-y-2">
             {items.map((item, idx) => (
-              <div key={idx} className="flex gap-2">
+              <div key={idx} className={cn('flex gap-2', item.indent && 'ml-8')}>
                 <input
                   value={item.text}
                   onChange={(e) =>
@@ -603,6 +612,20 @@ function TemplateEditor({
                     <option value="medium">Medium</option>
                     <option value="high">High</option>
                   </select>
+                )}
+                {!item.heading && (
+                  <button
+                    type="button"
+                    title={item.indent ? 'Make a top-level item' : 'Make a subtask of the item above'}
+                    onClick={() =>
+                      setItems(
+                        items.map((it, i) => (i === idx ? { ...it, indent: it.indent ? 0 : 1 } : it))
+                      )
+                    }
+                    className="rounded p-2 text-muted hover:bg-hover hover:text-ink"
+                  >
+                    {item.indent ? <Outdent className="h-4 w-4" /> : <Indent className="h-4 w-4" />}
+                  </button>
                 )}
                 <button
                   type="button"

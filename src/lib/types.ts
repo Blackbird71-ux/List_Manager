@@ -26,6 +26,7 @@ export interface ApiTemplateItem {
   text: string
   priority: string | null
   section: string
+  indent: number
   sortOrder: number
 }
 
@@ -68,6 +69,7 @@ export interface ApiChecklistItem {
   notes: string
   priority: string | null
   section: string
+  indent: number
   sortOrder: number
   assignedTo: ApiUserRef | null
   checkedByName: string | null

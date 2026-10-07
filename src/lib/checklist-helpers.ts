@@ -135,6 +135,7 @@ export async function createChecklistFromTemplate(params: {
           text: item.text,
           priority: item.priority,
           section: item.section,
+          indent: item.indent,
           sortOrder: idx,
         })),
       },
@@ -177,7 +178,7 @@ interface CloneSource {
   createdById: string
   assignedToId: string | null
   reminderOffsetHours: number | null
-  items: { text: string; priority: string | null; section: string; assignedToId: string | null }[]
+  items: { text: string; priority: string | null; section: string; indent: number; assignedToId: string | null }[]
 }
 
 /**
@@ -212,6 +213,7 @@ async function cloneForNextRun(
           text: item.text,
           priority: item.priority,
           section: item.section,
+          indent: item.indent,
           sortOrder: idx,
           assignedToId: item.assignedToId,
         })),

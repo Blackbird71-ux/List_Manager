@@ -50,7 +50,8 @@ export async function runOverdueDigest(): Promise<{ notified: number; overdue: n
         targetId,
         'Overdue checklist',
         `"${checklist.title}" was due ${dueText}.`,
-        checklist.id
+        checklist.id,
+        { email: true }
       )
       notified++
     }
@@ -89,7 +90,9 @@ export async function runOverdueDigest(): Promise<{ notified: number; overdue: n
       await notify(
         manager.id,
         'Overdue digest',
-        `${count} checklist${count === 1 ? ' is' : 's are'} overdue across the team.`
+        `${count} checklist${count === 1 ? ' is' : 's are'} overdue across the team.`,
+        undefined,
+        { email: true }
       )
       notified++
     }

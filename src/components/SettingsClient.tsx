@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { TunnelSection } from '@/components/TunnelSection'
 import { EmailSection } from '@/components/EmailSection'
 import { PushSection } from '@/components/PushSection'
+import { EmailRemindersSection } from '@/components/EmailRemindersSection'
 
 type Theme = 'light' | 'iris' | 'dark'
 
@@ -85,6 +86,7 @@ export function SettingsClient({
 
       {/* Push notifications (per device, everyone) */}
       <PushSection />
+      <EmailRemindersSection />
 
       {/* Instance-wide settings — only primary-organisation admins */}
       {isPrimaryAdmin && <RegistrationSection />}

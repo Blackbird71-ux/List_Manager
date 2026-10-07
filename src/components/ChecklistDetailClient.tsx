@@ -8,6 +8,8 @@ import {
   Bell,
   Calendar,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Download,
   GripVertical,
   History,
@@ -45,8 +47,17 @@ export function ChecklistDetailClient({
   const [justCompleted, setJustCompleted] = useState(false)
   const [dragId, setDragId] = useState<string | null>(null)
   const [pollTick, setPollTick] = useState(0)
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const dragIdRef = useRef<string | null>(null)
   dragIdRef.current = dragId
+
+  function toggleSection(name: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (!next.delete(name)) next.add(name)
+      return next
+    })
+  }
 
   const load = useCallback(async () => {
     const [clRes, uRes] = await Promise.all([
@@ -428,10 +439,26 @@ export function ChecklistDetailClient({
       {/* Items */}
       <div className="space-y-2">
         {checklist.items.map((item, idx) => (
-          <div key={item.id} className="space-y-2">
+          <div key={item.id} className={cn('space-y-2', item.indent > 0 && 'ml-8')}>
             {item.section && item.section !== (checklist.items[idx - 1]?.section ?? '') && (
-              <h3 className="pt-2 text-sm font-semibold text-muted">{item.section}</h3>
+              <button
+                type="button"
+                onClick={() => toggleSection(item.section)}
+                className="flex w-full items-center gap-1 pt-2 text-left text-sm font-semibold text-muted hover:text-ink"
+              >
+                {collapsed.has(item.section) ? (
+                  <ChevronRight className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+                <span>{item.section}</span>
+                <span className="ml-1 text-xs font-normal text-faint">
+                  {checklist.items.filter((i) => i.section === item.section && i.checked).length}/
+                  {checklist.items.filter((i) => i.section === item.section).length}
+                </span>
+              </button>
             )}
+            {!(item.section && collapsed.has(item.section)) && (
             <ItemRow
               checklistId={checklistId}
               item={item}
@@ -443,6 +470,7 @@ export function ChecklistDetailClient({
               onDragOver={(e) => dragOverItem(e, item.id)}
               onDragEnd={dropItem}
             />
+            )}
           </div>
         ))}
 

@@ -5,6 +5,7 @@
 export interface ParsedItem {
   text: string
   section: string
+  indent: number
 }
 
 export interface ParsedDraft {
@@ -81,14 +82,15 @@ export function parseTextList(text: string): ParsedDraft {
         j++
         if (!children[children.length - 1].endsWith(',')) break
       }
+      items.push({ text: line.text.replace(/:$/, ''), section, indent: 0 })
       for (const child of children) {
-        items.push({ text: clip(`${line.text} ${child.replace(/[,.;]$/, '')}`), section })
+        items.push({ text: clip(child.replace(/[,.;]$/, '')), section, indent: 1 })
       }
       i = j - 1
       continue
     }
 
-    items.push({ text: line.text, section })
+    items.push({ text: line.text, section, indent: 0 })
   }
 
   return { items, fields: [] }
@@ -108,7 +110,7 @@ export function parseRows(rows: unknown[][]): ParsedDraft {
     if (FIELD_LABEL.test(name)) {
       if (!fields.includes(name)) fields.push(name)
     } else {
-      items.push({ text: label, section: '' })
+      items.push({ text: label, section: '', indent: 0 })
     }
   }
   return { items, fields }

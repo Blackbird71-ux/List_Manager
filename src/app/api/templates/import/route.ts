@@ -8,6 +8,7 @@ const itemSchema = z.object({
   text: z.string().trim().min(1).max(500),
   priority: z.enum(['low', 'medium', 'high']).nullish(),
   section: z.string().trim().max(200).default(''),
+  indent: z.number().int().min(0).max(1).default(0),
   sortOrder: z.number().int().min(0).default(0),
 })
 
@@ -66,6 +67,7 @@ export async function POST(request: Request) {
                 text: item.text,
                 priority: item.priority ?? null,
                 section: item.section,
+                indent: item.indent,
                 sortOrder: idx,
               })),
           },

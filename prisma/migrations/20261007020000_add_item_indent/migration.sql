@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "TemplateItem" ADD COLUMN "indent" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "ChecklistItem" ADD COLUMN "indent" INTEGER NOT NULL DEFAULT 0;

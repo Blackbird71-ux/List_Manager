@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   Calendar,
   CheckCircle2,
@@ -36,6 +37,7 @@ export function DashboardClient({ currentUserId }: { currentUserId: string }) {
   const [assigneeFilter, setAssigneeFilter] = useState('')
   const [search, setSearch] = useState('')
   const [showCreate, setShowCreate] = useState(false)
+  const router = useRouter()
 
   // Bulk selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -331,6 +333,10 @@ export function DashboardClient({ currentUserId }: { currentUserId: string }) {
                   // Don't toggle when clicking checkbox or links
                   if ((e.target as HTMLElement).closest('input[type="checkbox"]') || (e.target as HTMLElement).closest('a')) return
                   toggleSelect(c.id)
+                }}
+                onDoubleClick={(e) => {
+                  if ((e.target as HTMLElement).closest('input[type="checkbox"]') || (e.target as HTMLElement).closest('a')) return
+                  router.push(`/checklists/${c.id}`)
                 }}
                 className={`group rounded-xl border p-4 transition hover:shadow-sm cursor-pointer ${
                   isSelected

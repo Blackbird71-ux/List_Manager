@@ -8,7 +8,7 @@ describe('parseTextList', () => {
     expect(d.items.every((i) => i.section === '')).toBe(true)
   })
 
-  it('turns numbered headings into sections and merges sub-bullets', () => {
+  it('turns numbered headings into sections and sub-bullets into subtasks', () => {
     const d = parseTextList(
       [
         'Intro paragraph that is skipped.',
@@ -24,11 +24,12 @@ describe('parseTextList', () => {
       ].join('\n')
     )
     expect(d.items).toEqual([
-      { text: 'Define who approves: scope changes', section: 'Set up governance' },
-      { text: 'Define who approves: budget decisions', section: 'Set up governance' },
-      { text: 'Define who approves: practical completion', section: 'Set up governance' },
-      { text: 'Create a risk register.', section: 'Set up governance' },
-      { text: 'Generate a VicPlan report.', section: 'Site due diligence' },
+      { text: 'Define who approves', section: 'Set up governance', indent: 0 },
+      { text: 'scope changes', section: 'Set up governance', indent: 1 },
+      { text: 'budget decisions', section: 'Set up governance', indent: 1 },
+      { text: 'practical completion', section: 'Set up governance', indent: 1 },
+      { text: 'Create a risk register.', section: 'Set up governance', indent: 0 },
+      { text: 'Generate a VicPlan report.', section: 'Site due diligence', indent: 0 },
     ])
   })
 

@@ -41,6 +41,7 @@ export async function GET() {
         text: i.text,
         priority: i.priority,
         section: i.section,
+        indent: i.indent,
         sortOrder: i.sortOrder,
       })),
       customFields: t.customFields.map((f) => ({

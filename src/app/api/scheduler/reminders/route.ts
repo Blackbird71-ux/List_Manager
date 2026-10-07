@@ -55,7 +55,8 @@ async function handle(request: Request) {
       reminder.userId,
       'Reminder: Checklist due soon',
       `"${reminder.checklist.title}" ${dueText(reminder.checklist.dueDate, now)}.`,
-      reminder.checklistId
+      reminder.checklistId,
+      { email: true }
     ).catch((err) => console.error('Reminder notification failed:', err))
 
     sent.push(reminder.id)
