@@ -19,6 +19,7 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
+  Save,
   Trash2,
   User as UserIcon,
   Users as UsersIcon,
@@ -173,6 +174,15 @@ export function ChecklistDetailClient({
     if (!res.ok) load() // restore server order if the reorder was rejected
   }
 
+  async function saveAsTemplate() {
+    const res = await fetch(`/api/checklists/${checklistId}/save-as-template`, { method: 'POST' })
+    if (res.ok) {
+      alert('Saved as a template. Find it under Templates.')
+    } else {
+      alert('Could not save as a template.')
+    }
+  }
+
   async function removeChecklist() {
     if (!checklist) return
     if (!confirm(`Delete "${checklist.title}"? This cannot be undone.`)) return
@@ -286,6 +296,13 @@ export function ChecklistDetailClient({
                 <CheckCircle2 className="h-4 w-4" /> Complete
               </button>
             )}
+            <button
+              onClick={saveAsTemplate}
+              className="rounded-lg p-2 text-muted hover:bg-hover hover:text-ink"
+              title="Save as template"
+            >
+              <Save className="h-4 w-4" />
+            </button>
             <button
               onClick={removeChecklist}
               className="rounded-lg p-2 text-danger/60 hover:bg-danger-soft hover:text-danger"
@@ -1053,6 +1070,18 @@ function ItemRow({
     onChanged()
   }
 
+  async function addSubtask() {
+    const text = prompt(`New subtask under "${item.text}":`)?.trim()
+    if (!text) return
+    const res = await fetch(`/api/checklists/${checklistId}/items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, parentItemId: item.id }),
+    })
+    if (!res.ok) alert('Could not add the subtask')
+    onChanged()
+  }
+
   async function removeItem() {
     if (!confirm(`Delete item "${item.text}"?`)) return
     await fetch(`/api/checklists/${checklistId}/items/${item.id}`, { method: 'DELETE' })
@@ -1170,6 +1199,15 @@ function ItemRow({
             </>
           )}
         </button>
+        {item.indent === 0 && (
+          <button
+            onClick={addSubtask}
+            className="rounded p-1.5 text-faint hover:bg-hover"
+            title="Add subtask"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        )}
         <button
           onClick={removeItem}
           className="rounded p-1.5 text-danger/50 hover:bg-danger-soft hover:text-danger"

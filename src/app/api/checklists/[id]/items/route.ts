@@ -9,6 +9,8 @@ const createSchema = z.object({
   text: z.string().trim().min(1).max(500),
   priority: z.enum(['low', 'medium', 'high']).nullish(),
   assignedToId: z.string().nullish(),
+  // Add as a subtask of this (top-level) item, placed after its other subtasks.
+  parentItemId: z.string().nullish(),
 })
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -43,19 +45,42 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
   }
 
-  const last = await prisma.checklistItem.findFirst({
+  const siblings = await prisma.checklistItem.findMany({
     where: { checklistId: id },
-    orderBy: { sortOrder: 'desc' },
-    select: { sortOrder: true },
+    orderBy: { sortOrder: 'asc' },
+    select: { id: true, sortOrder: true, section: true, indent: true },
   })
 
-  const item = await prisma.checklistItem.create({
+  let sortOrder = (siblings[siblings.length - 1]?.sortOrder ?? -1) + 1
+  let section = ''
+  let indent = 0
+  if (parsed.data.parentItemId) {
+    const at = siblings.findIndex((s) => s.id === parsed.data.parentItemId)
+    if (at === -1 || siblings[at].indent !== 0) {
+      return NextResponse.json({ error: 'Parent item not found' }, { status: 400 })
+    }
+    let end = at
+    while (siblings[end + 1]?.indent > 0) end++
+    sortOrder = siblings[end].sortOrder + 1
+    section = siblings[at].section
+    indent = 1
+  }
+
+  const item = await prisma.$transaction(async (tx) => {
+    // Make room when inserting mid-list.
+    await tx.checklistItem.updateMany({
+      where: { checklistId: id, sortOrder: { gte: sortOrder } },
+      data: { sortOrder: { increment: 1 } },
+    })
+    return tx.checklistItem.create({
     data: {
       checklistId: id,
       text: parsed.data.text,
       priority: parsed.data.priority ?? null,
       assignedToId: parsed.data.assignedToId ?? null,
-      sortOrder: (last?.sortOrder ?? -1) + 1,
+      section,
+      indent,
+      sortOrder,
     },
     include: {
       assignedTo: { select: { id: true, name: true, email: true } },
@@ -63,6 +88,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         select: { id: true, fileName: true, mimeType: true, size: true, createdAt: true },
       },
     },
+    })
   })
   logActivity(id, session.user.name, 'item_added', parsed.data.text)
   return NextResponse.json({ item }, { status: 201 })
