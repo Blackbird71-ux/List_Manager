@@ -21,9 +21,48 @@ due date advanced by the recurrence interval.
   again" prompt (pick the next due date, optionally make it repeat); a Reset
   button unchecks everything in place; templates have a one-click
   "Start checklist" action.
-- **Users & notifications** — per-user logins (NextAuth credentials), admin role
-  for user management, in-app notifications when a checklist is assigned to you
-  or a recurring list respawns.
+- **Subtasks & sections** — items can have indented subtasks; imported lists keep
+  their section headings, which collapse and show per-section progress.
+- **Pass / Fail / N/A** — each item can carry a result, shown as a badge on the row.
+- **Reminders** — set a due date plus a reminder offset (1 hour to 3 days before)
+  and the assignee is notified.
+- **Supporting documents** — files attached to the whole checklist, separate from
+  per-item attachments (10 MB each, stored on disk under `/data`).
+- **Manager sign-off** — tick "needs sign-off" on a list and, once finished, a
+  manager or admin must approve it or send it back with a reason. The person who
+  completed the list cannot approve it (four-eyes rule). Approver and note are
+  recorded in the activity log.
+- **Import & export** — create templates from `.docx`, `.xlsx`, `.csv`, `.md`,
+  `.txt` or JSON files (reviewed before saving); export all templates as JSON; save
+  any checklist as a template.
+- **Comments & activity** — discussion with @mentions, plus a full audit
+  trail of who did what and when.
+- **Visibility** — team, department or private; managers and admins see everything.
+  My Work shows what is assigned to you, My Team what your department is doing,
+  Completed is the permanent record (CSV export), Reports is for managers.
+- **Users & notifications** — per-user logins (NextAuth credentials), roles
+  (member / manager / admin), departments, in-app, push and email notifications.
+- **Context-aware help** — the **?** button in the header opens help for the page
+  you are on, adapts to your role, and on a checklist leads with what applies to it
+  right now (awaiting sign-off, completed, recurring, overdue).
+- **Search** — Ctrl+K / ⌘K searches checklists and items from anywhere.
+
+## Checklist page layout
+
+On screens 1280px wide or more the list sits on the left, starting at the top, and
+everything else (title and actions, selected item, due date / assignee / custom
+fields, sharing, documents, comments) lives in a side column on the right. Drag the
+bar between them to resize it (double-click to reset); the width is remembered per
+device. Clicking an item opens its notes, result, assignee and attachments in the
+side column. On narrower screens it is a single column and item details expand
+under the item. All per-item controls (notes, subtask, delete, tick box, drag grip)
+are at the right-hand end of the row.
+
+## Maintaining the in-app help
+
+Help text lives in `src/components/HelpMenu.tsx` (`baseTopicsFor` for each page,
+`checklistNowTopics` for state-specific tips). Pages report their state with
+`useHelpTags([...])`. When you add or change a feature, update the matching topic.
 
 ## Stack
 
@@ -48,7 +87,22 @@ founds their own organisation — a primary-org admin can switch off new
 organisations under Settings → Registration. Admins can also add accounts
 directly from the Users page.
 
-Checks: `npm run lint` (tsc), `npm run test` (vitest), `npm run build`.
+Checks: `npm run lint` (tsc), `npm run test` (vitest), `npm run build`. Run
+`npx prisma generate` before `tsc` after any schema change (`npm install` does it
+automatically).
+
+### Changing the database
+
+Migrations are hand-written SQL in `prisma/migrations/<timestamp>_<name>/migration.sql`
+(newer than the last folder). After editing `prisma/schema.prisma`:
+
+```bash
+npx prisma generate
+DATABASE_URL=file:./prisma/dev.db npx prisma migrate deploy   # apply locally
+```
+
+Never use `db push` or `migrate dev` against the NAS; the container applies
+migrations itself at startup.
 
 ## Deploying to the Synology NAS
 
@@ -57,8 +111,27 @@ Persistent data (SQLite DB, attachments, backups) lives in
 credentials go in `/volume1/docker/listsmanager/cloudflared` (config.yml +
 credentials JSON) — the tunnel starts automatically if config.yml exists.
 
+**Normal release (from the Windows dev machine):**
+
+1. Run `npm run lint`, `npm run test` and commit.
+2. Run `deploy-build.bat`. It builds the Docker image, saves it to
+   `listsmanager.tar`, and copies the tar, `deploy-nas.sh` and **`.env.local`** to
+   the NAS over scp.
+3. On the NAS: `sudo sh /volume1/docker/listsmanager/deploy-nas.sh`. It replaces
+   the container, applies pending migrations and prints the startup logs.
+
+Things to check before a release:
+
+- `deploy-build.bat` overwrites the NAS `.env.local` with your local one, so make
+  sure local values (e.g. `AUTH_SECRET`) match what the NAS needs. Values must not
+  be quoted — Docker's `--env-file` keeps the quotes.
+- If the release adds a migration, take a copy of `/data/listsmanager.db` first
+  (the container also makes a pre-deploy backup, but a manual one is cheap).
+- Check `docker logs listsmanager-app` for the migration and startup lines.
+
+**First-time / manual setup** (from the repo directory on the NAS):
+
 ```bash
-# On the NAS, in the repo directory:
 #   .env.local needs AUTH_SECRET (openssl rand -base64 32)
 docker compose up -d --build
 docker compose logs -f            # watch migrations + startup
@@ -70,5 +143,9 @@ docker compose logs -f            # watch migrations + startup
   request host, and an https `AUTH_URL` breaks login over plain-http LAN.
 - Migrations run automatically at container startup (`prisma migrate deploy`),
   with a pre-deploy DB backup kept in `/data/backups` (last 10).
-- A cron job inside the container backs up the DB daily at 03:00 (last 14 kept).
+- A cron job inside the container backs up the DB daily at 03:00 (last 14 kept)
+  and sends the overdue digest at 07:00.
+- Uploaded files (item attachments and supporting documents) are stored under
+  `/data/attachments`. They are not part of the DB backups, so include that folder
+  in any NAS backup.
 - Health check: `GET /api/health`.

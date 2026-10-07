@@ -28,6 +28,7 @@ import {
 } from 'lucide-react'
 import type { ApiActivity, ApiChecklist, ApiChecklistItem, ApiComment, ApiUser } from '@/lib/types'
 import { DepartmentPicker } from '@/components/DepartmentPicker'
+import { useHelpTags } from '@/components/HelpMenu'
 import { cn } from '@/lib/utils'
 
 // ChecklistItem.dueDate is new in the schema; ApiChecklistItem doesn't declare it yet.
@@ -231,6 +232,25 @@ export function ChecklistDetailClient({
     await fetch(`/api/checklists/${checklistId}`, { method: 'DELETE' })
     router.push('/')
   }
+
+  // Tell the help menu what state this list is in so it can lead with what matters.
+  const helpTags: string[] = []
+  if (checklist) {
+    const isApproverRole = currentUserRole === 'admin' || currentUserRole === 'manager'
+    const isDone = checklist.status === 'completed'
+    if (isDone) helpTags.push('completed')
+    if (isDone && checklist.requiresSignOff) {
+      if (checklist.signedOffAt) helpTags.push('signed-off')
+      else if (isApproverRole && checklist.completedById !== currentUserId) helpTags.push('can-approve')
+      else if (checklist.completedById === currentUserId) helpTags.push('pending-signoff-own')
+      else helpTags.push('pending-signoff')
+    }
+    if (checklist.requiresSignOff) helpTags.push('requires-signoff')
+    if (checklist.recurrence !== 'none') helpTags.push('recurring')
+    if (!isDone && checklist.dueDate && new Date(checklist.dueDate) < new Date()) helpTags.push('overdue')
+    if (isApproverRole || checklist.createdBy.id === currentUserId) helpTags.push('can-manage')
+  }
+  useHelpTags(helpTags)
 
   if (loading) {
     return <p className="py-12 text-center text-sm text-faint">Loading…</p>

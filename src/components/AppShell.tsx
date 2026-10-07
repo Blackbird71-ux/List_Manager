@@ -16,7 +16,7 @@ import {
   Users,
   Users2,
 } from 'lucide-react'
-import { HelpMenu } from '@/components/HelpMenu'
+import { HelpMenu, HelpProvider } from '@/components/HelpMenu'
 import { NotificationsBell } from '@/components/NotificationsBell'
 import { SearchOverlay } from '@/components/SearchOverlay'
 import { cn } from '@/lib/utils'
@@ -58,6 +58,7 @@ export function AppShell({ user, children }: AppShellProps) {
   ]
 
   return (
+    <HelpProvider>
     <div className="min-h-screen">
       <header className="sticky top-0 z-40 border-b border-border bg-panel/90 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-[2400px] items-center gap-4 px-4 lg:px-8">
@@ -94,7 +95,7 @@ export function AppShell({ user, children }: AppShellProps) {
               <span className="hidden sm:inline">Search…</span>
               <kbd className="hidden ml-1 rounded border border-border bg-hover px-1.5 py-0.5 text-[10px] font-medium sm:inline">⌘K</kbd>
             </button>
-            <HelpMenu />
+            <HelpMenu role={user.role} />
             <NotificationsBell />
             <Link
               href="/settings"
@@ -126,5 +127,6 @@ export function AppShell({ user, children }: AppShellProps) {
 
       <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>
+    </HelpProvider>
   )
 }
