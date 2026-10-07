@@ -396,70 +396,10 @@ export function ChecklistDetailClient({
     </div>
   )
 
-  return (
-    <div
-      className={cn("mx-auto", wide ? "grid max-w-none items-start" : "max-w-5xl")}
-      style={wide ? { gridTemplateColumns: `minmax(0,1fr) 16px ${sideWidth}px` } : undefined}
-    >
-    <div className="min-w-0 space-y-4">
-      <Link href="/" className="flex items-center gap-1 text-sm text-muted hover:text-ink">
-        <ArrowLeft className="h-4 w-4" /> All checklists
-      </Link>
-
-      {completed && checklist.nextInstanceId && (
-        <div className="flex items-center gap-2 rounded-xl border border-ok/30 bg-ok-soft px-4 py-3 text-sm text-ok">
-          <RefreshCw className="h-4 w-4 shrink-0" />
-          <span>
-            {justCompleted ? 'All done! The' : 'The'}{' '}
-            {checklist.recurrence !== 'none' ? `next ${checklist.recurrence} instance` : 'next run'}{' '}
-            has been created.{' '}
-            <Link
-              href={`/checklists/${checklist.nextInstanceId}`}
-              className="font-semibold underline"
-            >
-              Open it
-            </Link>
-          </span>
-        </div>
-      )}
-
-      {pendingSignOff && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn">
-          <ShieldCheck className="h-4 w-4 shrink-0" />
-          <span className="flex-1">
-            {canApprove
-              ? 'This list is finished and needs your sign-off.'
-              : isApprover && checklist.completedById === currentUserId
-                ? 'Awaiting sign-off — another manager must approve it, as you completed it.'
-                : 'Awaiting manager sign-off.'}
-          </span>
-          {canApprove && (
-            <div className="flex gap-2">
-              <button
-                onClick={() => signOff('approve')}
-                className="rounded-lg bg-ok px-3 py-1.5 text-sm font-semibold text-accent-ink hover:opacity-90"
-              >
-                Approve
-              </button>
-              <button
-                onClick={() => signOff('reject')}
-                className="rounded-lg border border-danger/40 px-3 py-1.5 text-sm font-semibold text-danger hover:bg-danger-soft"
-              >
-                Send back
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {completed && !checklist.nextInstanceId && (
-        <RunAgainPanel checklistId={checklistId} justCompleted={justCompleted} />
-      )}
-
-      {/* Header card */}
+  const headerCard = (
       <div className="rounded-2xl border border-border bg-panel p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
             <h1 className={cn('text-xl font-semibold', completed && 'text-faint line-through')}>
               {checklist.title}
             </h1>
@@ -573,6 +513,69 @@ export function ChecklistDetailClient({
           </div>
         )}
       </div>
+  )
+
+  return (
+    <div
+      className={cn("mx-auto", wide ? "grid max-w-none items-start" : "max-w-5xl")}
+      style={wide ? { gridTemplateColumns: `minmax(0,1fr) 16px ${sideWidth}px` } : undefined}
+    >
+    <div className="min-w-0 space-y-4">
+      <Link href="/" className="flex items-center gap-1 text-sm text-muted hover:text-ink">
+        <ArrowLeft className="h-4 w-4" /> All checklists
+      </Link>
+
+      {completed && checklist.nextInstanceId && (
+        <div className="flex items-center gap-2 rounded-xl border border-ok/30 bg-ok-soft px-4 py-3 text-sm text-ok">
+          <RefreshCw className="h-4 w-4 shrink-0" />
+          <span>
+            {justCompleted ? 'All done! The' : 'The'}{' '}
+            {checklist.recurrence !== 'none' ? `next ${checklist.recurrence} instance` : 'next run'}{' '}
+            has been created.{' '}
+            <Link
+              href={`/checklists/${checklist.nextInstanceId}`}
+              className="font-semibold underline"
+            >
+              Open it
+            </Link>
+          </span>
+        </div>
+      )}
+
+      {pendingSignOff && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn">
+          <ShieldCheck className="h-4 w-4 shrink-0" />
+          <span className="flex-1">
+            {canApprove
+              ? 'This list is finished and needs your sign-off.'
+              : isApprover && checklist.completedById === currentUserId
+                ? 'Awaiting sign-off — another manager must approve it, as you completed it.'
+                : 'Awaiting manager sign-off.'}
+          </span>
+          {canApprove && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => signOff('approve')}
+                className="rounded-lg bg-ok px-3 py-1.5 text-sm font-semibold text-accent-ink hover:opacity-90"
+              >
+                Approve
+              </button>
+              <button
+                onClick={() => signOff('reject')}
+                className="rounded-lg border border-danger/40 px-3 py-1.5 text-sm font-semibold text-danger hover:bg-danger-soft"
+              >
+                Send back
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {completed && !checklist.nextInstanceId && (
+        <RunAgainPanel checklistId={checklistId} justCompleted={justCompleted} />
+      )}
+
+      {!wide && headerCard}
 
       {!wide && sharingBlock}
       {!wide && docsBlock}
@@ -650,6 +653,7 @@ export function ChecklistDetailClient({
     )}
     {wide && (
       <aside className="sticky top-20 max-h-[calc(100vh-6rem)] space-y-4 overflow-y-auto pr-1">
+        {headerCard}
         <div className="rounded-2xl border border-border bg-panel p-4">
         {selectedItem ? (
           <>
@@ -1567,22 +1571,6 @@ function ItemRow({
       )}
     >
       <div className="flex items-center gap-3 px-3 py-3 md:py-1">
-        <span
-          onMouseDown={() => setArmed(true)}
-          onMouseUp={() => setArmed(false)}
-          onTouchStart={() => setArmed(true)}
-          onTouchEnd={() => setArmed(false)}
-          className="-ml-1 shrink-0 cursor-grab touch-none text-faint hover:text-muted active:cursor-grabbing"
-          title="Drag to reorder"
-        >
-          <GripVertical className="h-4 w-4" />
-        </span>
-        <input
-          type="checkbox"
-          checked={item.checked}
-          onChange={onToggle}
-          className="h-5 w-5 shrink-0 accent-accent"
-        />
         <div
           className={cn('min-w-0 flex-1', wide && 'cursor-pointer')}
           onClick={wide ? onSelect : undefined}
@@ -1670,6 +1658,22 @@ function ItemRow({
         >
           <Trash2 className="h-4 w-4" />
         </button>
+        <input
+          type="checkbox"
+          checked={item.checked}
+          onChange={onToggle}
+          className="ml-1 h-5 w-5 shrink-0 accent-accent"
+        />
+        <span
+          onMouseDown={() => setArmed(true)}
+          onMouseUp={() => setArmed(false)}
+          onTouchStart={() => setArmed(true)}
+          onTouchEnd={() => setArmed(false)}
+          className="-mr-1 shrink-0 cursor-grab touch-none text-faint hover:text-muted active:cursor-grabbing"
+          title="Drag to reorder"
+        >
+          <GripVertical className="h-4 w-4" />
+        </span>
       </div>
 
       {!wide && expanded && (
