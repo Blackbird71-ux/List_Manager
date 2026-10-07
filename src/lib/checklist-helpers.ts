@@ -322,7 +322,7 @@ export async function resetChecklist(checklistId: string): Promise<boolean> {
   await prisma.$transaction([
     prisma.checklistItem.updateMany({
       where: { checklistId },
-      data: { checked: false, checkedByName: null, checkedAt: null },
+      data: { checked: false, result: '', checkedByName: null, checkedAt: null },
     }),
     prisma.checklist.update({
       where: { id: checklistId },

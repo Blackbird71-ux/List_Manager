@@ -1,0 +1,1 @@
+ALTER TABLE "ChecklistItem" ADD COLUMN "result" TEXT NOT NULL DEFAULT '';

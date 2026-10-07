@@ -1113,7 +1113,7 @@ function ItemRow({
     onChanged()
   }
 
-  const hasExtras = item.notes || item.attachments.length > 0 || item.assignedTo
+  const hasExtras = item.notes || item.result || item.attachments.length > 0 || item.assignedTo
 
   return (
     <div
@@ -1154,6 +1154,19 @@ function ItemRow({
             </p>
           )}
         </div>
+
+        {item.result && (
+          <span
+            className={cn(
+              'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase',
+              item.result === 'pass' && 'bg-ok-soft text-ok',
+              item.result === 'fail' && 'bg-danger-soft text-danger',
+              item.result === 'na' && 'bg-hover text-muted'
+            )}
+          >
+            {item.result === 'na' ? 'N/A' : item.result}
+          </span>
+        )}
 
         {item.dueDate && (
           <span
@@ -1262,6 +1275,30 @@ function ItemRow({
                 className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
               />
             </label>
+          </div>
+
+          <div>
+            <span className="mb-1 block text-xs font-medium text-muted">Result</span>
+            <div className="flex gap-1.5">
+              {(['pass', 'fail', 'na'] as const).map((r) => (
+                <button
+                  key={r}
+                  onClick={() => patchItem({ result: item.result === r ? '' : r })}
+                  className={cn(
+                    'rounded-lg border px-3 py-1 text-xs font-semibold uppercase',
+                    item.result === r
+                      ? r === 'pass'
+                        ? 'border-ok bg-ok-soft text-ok'
+                        : r === 'fail'
+                          ? 'border-danger bg-danger-soft text-danger'
+                          : 'border-muted bg-hover text-ink'
+                      : 'border-border text-muted hover:bg-hover'
+                  )}
+                >
+                  {r === 'na' ? 'N/A' : r}
+                </button>
+              ))}
+            </div>
           </div>
 
           <label className="block text-sm">

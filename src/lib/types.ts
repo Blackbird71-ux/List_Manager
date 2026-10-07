@@ -67,6 +67,7 @@ export interface ApiChecklistItem {
   text: string
   checked: boolean
   notes: string
+  result: string
   priority: string | null
   section: string
   indent: number

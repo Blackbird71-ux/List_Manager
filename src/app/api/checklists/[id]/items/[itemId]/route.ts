@@ -10,6 +10,7 @@ const patchSchema = z.object({
   text: z.string().trim().min(1).max(500).optional(),
   checked: z.boolean().optional(),
   notes: z.string().max(5000).optional(),
+  result: z.enum(['', 'pass', 'fail', 'na']).optional(),
   priority: z.enum(['low', 'medium', 'high']).nullish(),
   dueDate: z.iso.datetime().nullish(),
   assignedToId: z.string().nullish(),
@@ -54,7 +55,10 @@ export async function PATCH(
     }
   }
 
-  const { checked, priority, dueDate, assignedToId, ...scalars } = parsed.data
+  const { checked: requestedChecked, priority, dueDate, assignedToId, ...scalars } = parsed.data
+  // Recording a result counts as doing the item; unticking clears the result.
+  const checked = requestedChecked ?? (scalars.result && !item.checked ? true : undefined)
+  if (checked === false) scalars.result = ''
   const data: Record<string, unknown> = { ...scalars }
   if (priority !== undefined) data.priority = priority ?? null
   if (dueDate !== undefined) data.dueDate = dueDate ? new Date(dueDate) : null

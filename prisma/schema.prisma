@@ -300,6 +300,8 @@ model ChecklistItem {
   // Heading copied from the template item (empty = no heading).
   section     String    @default("")
   indent      Int       @default(0)
+  // Inspection outcome: "" (none) | "pass" | "fail" | "na". Setting one also ticks the item.
+  result      String    @default("")
   sortOrder   Int       @default(0)
 
   // Subtask hierarchy (self-referencing)
