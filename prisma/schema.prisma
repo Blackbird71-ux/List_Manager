@@ -230,6 +230,7 @@ model Checklist {
   activity    ActivityLog[]
   departments ChecklistDepartment[]
   reminders   Reminder[]
+  attachments Attachment[]
 
   @@index([organizationId, status])
   @@index([assignedToId])
@@ -346,8 +347,11 @@ model CustomFieldValue {
 // File metadata; bytes live on disk under DATA_DIR/attachments/.
 model Attachment {
   id           String        @id @default(cuid())
-  itemId       String
-  item         ChecklistItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  // Belongs to one checklist item, or (itemId null) to the checklist as a whole.
+  itemId       String?
+  item         ChecklistItem? @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  checklistId  String?
+  checklist    Checklist?    @relation(fields: [checklistId], references: [id], onDelete: Cascade)
   fileName     String
   mimeType     String
   size         Int
@@ -357,6 +361,7 @@ model Attachment {
   createdAt    DateTime @default(now())
 
   @@index([itemId])
+  @@index([checklistId])
 }
 
 model Notification {

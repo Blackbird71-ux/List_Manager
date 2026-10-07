@@ -21,6 +21,7 @@ import {
   RotateCcw,
   Save,
   ShieldCheck,
+  X,
   Trash2,
   User as UserIcon,
   Users as UsersIcon,
@@ -50,6 +51,8 @@ export function ChecklistDetailClient({
   const [dragId, setDragId] = useState<string | null>(null)
   const [pollTick, setPollTick] = useState(0)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const wide = useWideScreen()
   const dragIdRef = useRef<string | null>(null)
   dragIdRef.current = dragId
 
@@ -218,6 +221,7 @@ export function ChecklistDetailClient({
     )
   }
 
+  const selectedItem = checklist.items.find((i) => i.id === selectedId) ?? null
   const done = checklist.items.filter((i) => i.checked).length
   const total = checklist.items.length
   const pct = total > 0 ? Math.round((done / total) * 100) : 0
@@ -231,7 +235,8 @@ export function ChecklistDetailClient({
     checklist.createdBy.id === currentUserId
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
+    <div className={cn("mx-auto", wide ? "grid max-w-none grid-cols-[minmax(0,1fr)_26rem] items-start gap-6" : "max-w-5xl")}>
+    <div className="min-w-0 space-y-4">
       <Link href="/" className="flex items-center gap-1 text-sm text-muted hover:text-ink">
         <ArrowLeft className="h-4 w-4" /> All checklists
       </Link>
@@ -524,15 +529,21 @@ export function ChecklistDetailClient({
         />
       )}
 
+      <SupportingDocuments
+        checklistId={checklistId}
+        attachments={checklist.attachments ?? []}
+        onChanged={load}
+      />
+
       {/* Items */}
-      <div className="space-y-2">
+      <div className="space-y-1 md:space-y-1">
         {checklist.items.map((item, idx) => (
-          <div key={item.id} className={cn('space-y-2', item.indent > 0 && 'ml-8')}>
+          <div key={item.id} className={cn('space-y-1', item.indent > 0 && 'ml-8')}>
             {item.section && item.section !== (checklist.items[idx - 1]?.section ?? '') && (
               <button
                 type="button"
                 onClick={() => toggleSection(item.section)}
-                className="flex w-full items-center gap-1 pt-2 text-left text-sm font-semibold text-muted hover:text-ink"
+                className="flex w-full items-center gap-1 pt-3 text-left text-sm font-semibold text-muted hover:text-ink"
               >
                 {collapsed.has(item.section) ? (
                   <ChevronRight className="h-4 w-4" />
@@ -551,6 +562,9 @@ export function ChecklistDetailClient({
               checklistId={checklistId}
               item={item}
               users={users}
+              wide={wide}
+              selected={selectedId === item.id}
+              onSelect={() => setSelectedId((cur) => (cur === item.id ? null : item.id))}
               onToggle={() => toggleItem(item)}
               onChanged={load}
               dragging={dragId === item.id}
@@ -581,13 +595,72 @@ export function ChecklistDetailClient({
 
       <CommentsActivityPanel checklistId={checklistId} users={users} refreshTick={pollTick} />
     </div>
+
+    {wide && (
+      <aside className="sticky top-20 max-h-[calc(100vh-6rem)] overflow-y-auto rounded-2xl border border-border bg-panel p-4">
+        {selectedItem ? (
+          <>
+            <div className="mb-3 flex items-start gap-2">
+              <input
+                type="checkbox"
+                checked={selectedItem.checked}
+                onChange={() => toggleItem(selectedItem)}
+                className="mt-0.5 h-5 w-5 shrink-0 accent-accent"
+              />
+              <h2
+                className={cn(
+                  'min-w-0 flex-1 break-words text-sm font-semibold',
+                  selectedItem.checked && 'text-faint line-through'
+                )}
+              >
+                {selectedItem.text}
+              </h2>
+              <button
+                onClick={() => setSelectedId(null)}
+                className="rounded p-1 text-faint hover:bg-hover hover:text-ink"
+                title="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <ItemDetails
+              key={selectedItem.id}
+              checklistId={checklistId}
+              item={selectedItem}
+              users={users}
+              onChanged={load}
+              panel
+            />
+          </>
+        ) : (
+          <p className="py-8 text-center text-sm text-faint">
+            Select an item to see its notes, result, assignee and attachments.
+          </p>
+        )}
+      </aside>
+    )}
+    </div>
   )
+}
+
+// True on screens wide enough to show item details in a side panel.
+function useWideScreen() {
+  const [wide, setWide] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1280px)')
+    const update = () => setWide(mq.matches)
+    update()
+    mq.addEventListener('change', update)
+    return () => mq.removeEventListener('change', update)
+  }, [])
+  return wide
 }
 
 const ACTION_LABELS: Record<string, string> = {
   created: 'created this checklist',
   item_checked: 'checked off',
   signed_off: 'signed off',
+  document_added: 'added a supporting document',
   sign_off_rejected: 'sent back for rework',
   sign_off_setting: 'changed the sign-off setting',
   item_unchecked: 'unchecked',
@@ -1027,6 +1100,86 @@ function SharingPanel({
 
 const RECURRENCES = ['none', 'daily', 'weekly', 'fortnightly', 'monthly', 'quarterly', 'yearly']
 
+function SupportingDocuments({
+  checklistId,
+  attachments,
+  onChanged,
+}: {
+  checklistId: string
+  attachments: ApiChecklist['attachments']
+  onChanged: () => void
+}) {
+  const [uploading, setUploading] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  async function upload(file: File) {
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch(`/api/checklists/${checklistId}/attachments`, {
+        method: 'POST',
+        body: formData,
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        alert(data.error ?? 'Upload failed')
+      }
+      onChanged()
+    } finally {
+      setUploading(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  async function remove(attachmentId: string) {
+    await fetch(`/api/attachments/${attachmentId}`, { method: 'DELETE' })
+    onChanged()
+  }
+
+  return (
+    <div className="rounded-2xl border border-border bg-panel p-4">
+      <h2 className="mb-1 flex items-center gap-1.5 text-sm font-semibold">
+        <Paperclip className="h-4 w-4 text-muted" /> Supporting documents
+      </h2>
+      {attachments.length === 0 && (
+        <p className="text-xs text-faint">Files that relate to the whole list, not a single item.</p>
+      )}
+      {attachments.map((a) => (
+        <div key={a.id} className="flex items-center gap-2 py-1 text-sm">
+          <span className="min-w-0 flex-1 truncate">{a.fileName}</span>
+          <span className="text-xs text-faint">{Math.ceil(a.size / 1024)} KB</span>
+          <a
+            href={`/api/attachments/${a.id}`}
+            className="rounded p-1 text-accent hover:bg-accent-soft"
+            title="Download"
+          >
+            <Download className="h-4 w-4" />
+          </a>
+          <button
+            onClick={() => remove(a.id)}
+            className="rounded p-1 text-danger/50 hover:bg-danger-soft hover:text-danger"
+            title="Remove"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      ))}
+      <input
+        ref={fileRef}
+        type="file"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) upload(file)
+        }}
+        disabled={uploading}
+        className="mt-1 block w-full text-xs text-muted file:mr-2 file:rounded-lg file:border-0 file:bg-hover file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-ink hover:file:bg-border-soft"
+      />
+      {uploading && <p className="mt-1 text-xs text-faint">Uploading…</p>}
+    </div>
+  )
+}
+
 function RunAgainPanel({
   checklistId,
   justCompleted,
@@ -1107,32 +1260,23 @@ function RunAgainPanel({
   )
 }
 
-function ItemRow({
+// The editable detail fields for one item. Shown inline under the row on narrow
+// screens and in the side panel on wide ones.
+function ItemDetails({
   checklistId,
   item,
   users,
-  onToggle,
   onChanged,
-  dragging,
-  onDragStart,
-  onDragOver,
-  onDragEnd,
+  panel,
 }: {
   checklistId: string
   item: ItemWithDue
   users: ApiUser[]
-  onToggle: () => void
   onChanged: () => void
-  dragging: boolean
-  onDragStart: () => void
-  onDragOver: (e: React.DragEvent) => void
-  onDragEnd: () => void
+  panel?: boolean
 }) {
-  const [expanded, setExpanded] = useState(false)
   const [notes, setNotes] = useState(item.notes)
   const [uploading, setUploading] = useState(false)
-  // Only arm dragging from the grip so text selection and inputs keep working.
-  const [armed, setArmed] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   async function patchItem(data: Record<string, unknown>) {
@@ -1141,24 +1285,6 @@ function ItemRow({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
-    onChanged()
-  }
-
-  async function addSubtask() {
-    const text = prompt(`New subtask under "${item.text}":`)?.trim()
-    if (!text) return
-    const res = await fetch(`/api/checklists/${checklistId}/items`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, parentItemId: item.id }),
-    })
-    if (!res.ok) alert('Could not add the subtask')
-    onChanged()
-  }
-
-  async function removeItem() {
-    if (!confirm(`Delete item "${item.text}"?`)) return
-    await fetch(`/api/checklists/${checklistId}/items/${item.id}`, { method: 'DELETE' })
     onChanged()
   }
 
@@ -1187,6 +1313,180 @@ function ItemRow({
     onChanged()
   }
 
+  return (
+    <div className={cn('space-y-3', !panel && 'border-t border-border-soft px-4 py-3')}>
+          <div className={cn("grid gap-3", panel ? "grid-cols-2" : "sm:grid-cols-2 md:grid-cols-4")}>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-muted">Assigned to</span>
+              <select
+                value={item.assignedTo?.id ?? ''}
+                onChange={(e) => patchItem({ assignedToId: e.target.value || null })}
+                className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
+              >
+                <option value="">Unassigned</option>
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-muted">Priority</span>
+              <select
+                value={item.priority ?? ''}
+                onChange={(e) => patchItem({ priority: e.target.value || null })}
+                className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
+              >
+                <option value="">None</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-muted">Due date</span>
+              <input
+                type="date"
+                value={item.dueDate ? item.dueDate.slice(0, 10) : ''}
+                onChange={(e) =>
+                  patchItem({
+                    dueDate: e.target.value
+                      ? new Date(`${e.target.value}T00:00:00`).toISOString()
+                      : null,
+                  })
+                }
+                className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
+              />
+            </label>
+          <div>
+            <span className="mb-1 block text-xs font-medium text-muted">Result</span>
+            <div className="flex gap-1.5">
+              {(['pass', 'fail', 'na'] as const).map((r) => (
+                <button
+                  key={r}
+                  onClick={() => patchItem({ result: item.result === r ? '' : r })}
+                  className={cn(
+                    'rounded-lg border px-3 py-1 text-xs font-semibold uppercase',
+                    item.result === r
+                      ? r === 'pass'
+                        ? 'border-ok bg-ok-soft text-ok'
+                        : r === 'fail'
+                          ? 'border-danger bg-danger-soft text-danger'
+                          : 'border-muted bg-hover text-ink'
+                      : 'border-border text-muted hover:bg-hover'
+                  )}
+                >
+                  {r === 'na' ? 'N/A' : r}
+                </button>
+              ))}
+            </div>
+          </div>
+          </div>
+
+          <div className={cn("grid gap-3", !panel && "md:grid-cols-2")}>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-muted">Notes</span>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              onBlur={() => {
+                if (notes !== item.notes) patchItem({ notes })
+              }}
+              rows={2}
+              className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm"
+            />
+          </label>
+
+          <div>
+            <span className="mb-1 block text-xs font-medium text-muted">Attachments</span>
+            {item.attachments.map((a) => (
+              <div key={a.id} className="flex items-center gap-2 py-1 text-sm">
+                <Paperclip className="h-3.5 w-3.5 text-faint" />
+                <span className="min-w-0 flex-1 truncate">{a.fileName}</span>
+                <span className="text-xs text-faint">{Math.ceil(a.size / 1024)} KB</span>
+                <a
+                  href={`/api/attachments/${a.id}`}
+                  className="rounded p-1 text-accent hover:bg-accent-soft"
+                  title="Download"
+                >
+                  <Download className="h-4 w-4" />
+                </a>
+                <button
+                  onClick={() => deleteAttachment(a.id)}
+                  className="rounded p-1 text-danger/50 hover:bg-danger-soft hover:text-danger"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+            <input
+              ref={fileRef}
+              type="file"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) uploadFile(file)
+              }}
+              disabled={uploading}
+              className="mt-1 block w-full text-xs text-muted file:mr-2 file:rounded-lg file:border-0 file:bg-hover file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-ink hover:file:bg-border-soft"
+            />
+            {uploading && <p className="mt-1 text-xs text-faint">Uploading…</p>}
+          </div>
+          </div>
+    </div>
+  )
+}
+
+function ItemRow({
+  checklistId,
+  item,
+  users,
+  wide,
+  selected,
+  onSelect,
+  onToggle,
+  onChanged,
+  dragging,
+  onDragStart,
+  onDragOver,
+  onDragEnd,
+}: {
+  checklistId: string
+  item: ItemWithDue
+  users: ApiUser[]
+  // On wide screens details open in the side panel; otherwise inline under the row.
+  wide: boolean
+  selected: boolean
+  onSelect: () => void
+  onToggle: () => void
+  onChanged: () => void
+  dragging: boolean
+  onDragStart: () => void
+  onDragOver: (e: React.DragEvent) => void
+  onDragEnd: () => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  // Only arm dragging from the grip so text selection and inputs keep working.
+  const [armed, setArmed] = useState(false)
+
+  async function addSubtask() {
+    const text = prompt(`New subtask under "${item.text}":`)?.trim()
+    if (!text) return
+    const res = await fetch(`/api/checklists/${checklistId}/items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, parentItemId: item.id }),
+    })
+    if (!res.ok) alert('Could not add the subtask')
+    onChanged()
+  }
+
+  async function removeItem() {
+    if (!confirm(`Delete item "${item.text}"?`)) return
+    await fetch(`/api/checklists/${checklistId}/items/${item.id}`, { method: 'DELETE' })
+    onChanged()
+  }
+
   const hasExtras = item.notes || item.result || item.attachments.length > 0 || item.assignedTo
 
   return (
@@ -1198,9 +1498,13 @@ function ItemRow({
         setArmed(false)
         onDragEnd()
       }}
-      className={cn('rounded-xl border border-border bg-panel', dragging && 'opacity-50')}
+      className={cn(
+        'rounded-lg border bg-panel',
+        wide && selected ? 'border-accent ring-1 ring-accent' : 'border-border',
+        dragging && 'opacity-50'
+      )}
     >
-      <div className="flex items-center gap-3 px-4 py-3">
+      <div className="flex items-center gap-3 px-3 py-3 md:py-1.5">
         <span
           onMouseDown={() => setArmed(true)}
           onMouseUp={() => setArmed(false)}
@@ -1217,7 +1521,10 @@ function ItemRow({
           onChange={onToggle}
           className="h-5 w-5 shrink-0 accent-accent"
         />
-        <div className="min-w-0 flex-1">
+        <div
+          className={cn('min-w-0 flex-1', wide && 'cursor-pointer')}
+          onClick={wide ? onSelect : undefined}
+        >
           <p className={cn('text-sm', item.checked && 'text-faint line-through')}>
             {item.text}
           </p>
@@ -1270,7 +1577,7 @@ function ItemRow({
         )}
 
         <button
-          onClick={() => setExpanded((v) => !v)}
+          onClick={wide ? onSelect : () => setExpanded((v) => !v)}
           className={cn(
             'flex items-center gap-1 rounded p-1.5 text-xs',
             hasExtras ? 'text-accent' : 'text-faint',
@@ -1303,126 +1610,8 @@ function ItemRow({
         </button>
       </div>
 
-      {expanded && (
-        <div className="space-y-3 border-t border-border-soft px-4 py-3">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-sm">
-              <span className="mb-1 block text-xs font-medium text-muted">Assigned to</span>
-              <select
-                value={item.assignedTo?.id ?? ''}
-                onChange={(e) => patchItem({ assignedToId: e.target.value || null })}
-                className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
-              >
-                <option value="">Unassigned</option>
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block text-xs font-medium text-muted">Priority</span>
-              <select
-                value={item.priority ?? ''}
-                onChange={(e) => patchItem({ priority: e.target.value || null })}
-                className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
-              >
-                <option value="">None</option>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-              </select>
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block text-xs font-medium text-muted">Due date</span>
-              <input
-                type="date"
-                value={item.dueDate ? item.dueDate.slice(0, 10) : ''}
-                onChange={(e) =>
-                  patchItem({
-                    dueDate: e.target.value
-                      ? new Date(`${e.target.value}T00:00:00`).toISOString()
-                      : null,
-                  })
-                }
-                className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
-              />
-            </label>
-          </div>
-
-          <div>
-            <span className="mb-1 block text-xs font-medium text-muted">Result</span>
-            <div className="flex gap-1.5">
-              {(['pass', 'fail', 'na'] as const).map((r) => (
-                <button
-                  key={r}
-                  onClick={() => patchItem({ result: item.result === r ? '' : r })}
-                  className={cn(
-                    'rounded-lg border px-3 py-1 text-xs font-semibold uppercase',
-                    item.result === r
-                      ? r === 'pass'
-                        ? 'border-ok bg-ok-soft text-ok'
-                        : r === 'fail'
-                          ? 'border-danger bg-danger-soft text-danger'
-                          : 'border-muted bg-hover text-ink'
-                      : 'border-border text-muted hover:bg-hover'
-                  )}
-                >
-                  {r === 'na' ? 'N/A' : r}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <label className="block text-sm">
-            <span className="mb-1 block text-xs font-medium text-muted">Notes</span>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              onBlur={() => {
-                if (notes !== item.notes) patchItem({ notes })
-              }}
-              rows={2}
-              className="w-full rounded-lg border border-border bg-field px-3 py-2 text-sm"
-            />
-          </label>
-
-          <div>
-            <span className="mb-1 block text-xs font-medium text-muted">Attachments</span>
-            {item.attachments.map((a) => (
-              <div key={a.id} className="flex items-center gap-2 py-1 text-sm">
-                <Paperclip className="h-3.5 w-3.5 text-faint" />
-                <span className="min-w-0 flex-1 truncate">{a.fileName}</span>
-                <span className="text-xs text-faint">{Math.ceil(a.size / 1024)} KB</span>
-                <a
-                  href={`/api/attachments/${a.id}`}
-                  className="rounded p-1 text-accent hover:bg-accent-soft"
-                  title="Download"
-                >
-                  <Download className="h-4 w-4" />
-                </a>
-                <button
-                  onClick={() => deleteAttachment(a.id)}
-                  className="rounded p-1 text-danger/50 hover:bg-danger-soft hover:text-danger"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-            ))}
-            <input
-              ref={fileRef}
-              type="file"
-              onChange={(e) => {
-                const file = e.target.files?.[0]
-                if (file) uploadFile(file)
-              }}
-              disabled={uploading}
-              className="mt-1 block w-full text-xs text-muted file:mr-2 file:rounded-lg file:border-0 file:bg-hover file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-ink hover:file:bg-border-soft"
-            />
-            {uploading && <p className="mt-1 text-xs text-faint">Uploading…</p>}
-          </div>
-        </div>
+      {!wide && expanded && (
+        <ItemDetails checklistId={checklistId} item={item} users={users} onChanged={onChanged} />
       )}
     </div>
   )

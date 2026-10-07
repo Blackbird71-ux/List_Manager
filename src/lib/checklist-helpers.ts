@@ -69,6 +69,10 @@ const checklistInclude = {
       },
     },
   },
+  attachments: {
+    select: { id: true, fileName: true, mimeType: true, size: true, createdAt: true },
+    orderBy: { createdAt: 'asc' as const },
+  },
   fieldValues: true,
   assignedTo: { select: { id: true, name: true, email: true } },
   createdBy: { select: { id: true, name: true, email: true } },

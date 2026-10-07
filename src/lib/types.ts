@@ -104,6 +104,7 @@ export interface ApiChecklist {
   signedOffByName: string | null
   signedOffAt: string | null
   signOffNote: string
+  attachments: ApiAttachment[]
   createdAt: string
   items: ApiChecklistItem[]
   fieldValues: ApiCustomFieldValue[]

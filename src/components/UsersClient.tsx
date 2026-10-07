@@ -113,7 +113,7 @@ export function UsersClient({ currentUserId }: { currentUserId: string }) {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
+    <div className="mx-auto max-w-5xl space-y-4">
       <div className="flex items-center">
         <h1 className="text-lg font-semibold">Users</h1>
         <button

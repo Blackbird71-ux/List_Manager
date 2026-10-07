@@ -69,7 +69,7 @@ export function ReportsClient() {
   const maxTrend = data ? Math.max(1, ...data.trend.map((t) => t.completedCount)) : 1
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4">
+    <div className="mx-auto max-w-6xl space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="flex items-center gap-2 text-xl font-semibold">
           <BarChart3 className="h-5 w-5 text-accent" /> Team reports

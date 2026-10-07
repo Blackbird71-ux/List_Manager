@@ -12,10 +12,14 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   }
 
   const { id } = await params
+  const access = checklistAccessWhere(session.user.id, session.user.role, session.user.organizationId)
   const attachment = await prisma.attachment.findFirst({
     where: {
       id,
-      item: { checklist: checklistAccessWhere(session.user.id, session.user.role, session.user.organizationId) },
+      OR: [
+        { item: { checklist: access } },
+        { checklist: access },
+      ],
     },
   })
   if (!attachment) {
@@ -45,10 +49,14 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   }
 
   const { id } = await params
+  const access = checklistAccessWhere(session.user.id, session.user.role, session.user.organizationId)
   const attachment = await prisma.attachment.findFirst({
     where: {
       id,
-      item: { checklist: checklistAccessWhere(session.user.id, session.user.role, session.user.organizationId) },
+      OR: [
+        { item: { checklist: access } },
+        { checklist: access },
+      ],
     },
   })
   if (!attachment) {
