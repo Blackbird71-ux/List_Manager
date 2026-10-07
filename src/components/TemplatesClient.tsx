@@ -183,7 +183,7 @@ export function TemplatesClient() {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".json,.txt,.md,.csv,.xlsx"
+          accept=".json,.txt,.md,.csv,.xlsx,.docx"
           className="hidden"
           onChange={(e) => {
             const file = e.target.files?.[0]

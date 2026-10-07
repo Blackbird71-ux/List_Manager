@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server'
 import readXlsxFile from 'read-excel-file/node'
+import mammoth from 'mammoth'
 import { auth } from '@/lib/auth'
-import { parseCsv, parseRows, parseTextList } from '@/lib/import-parser'
+import { htmlToText, parseCsv, parseRows, parseTextList } from '@/lib/import-parser'
 
 const MAX_BYTES = 2 * 1024 * 1024
 
-// Reads an uploaded .txt/.md/.csv/.xlsx and returns a draft template. Nothing
+// Reads an uploaded .txt/.md/.csv/.xlsx/.docx and returns a draft template. Nothing
 // is saved — the client shows the draft in the template editor first.
 export async function POST(request: Request) {
   const session = await auth()
@@ -32,11 +33,14 @@ export async function POST(request: Request) {
       draft = parseRows(sheets[0]?.data ?? [])
     } else if (ext === 'csv') {
       draft = parseRows(parseCsv(await file.text()))
+    } else if (ext === 'docx') {
+      const { value } = await mammoth.convertToHtml({ buffer: Buffer.from(await file.arrayBuffer()) })
+      draft = parseTextList(htmlToText(value))
     } else if (ext === 'txt' || ext === 'md') {
       draft = parseTextList(await file.text())
     } else {
       return NextResponse.json(
-        { error: 'Unsupported file type — use .txt, .csv or .xlsx' },
+        { error: 'Unsupported file type — use .txt, .csv, .xlsx or .docx' },
         { status: 400 }
       )
     }

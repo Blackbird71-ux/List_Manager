@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseCsv, parseRows, parseTextList } from '@/lib/import-parser'
+import { htmlToText, parseCsv, parseRows, parseTextList } from '@/lib/import-parser'
 
 describe('parseTextList', () => {
   it('reads a flat bullet list', () => {
@@ -81,6 +81,17 @@ describe('parseCsv', () => {
     expect(parseCsv('a,"b, c"\r\n"say ""hi""",d\r\n')).toEqual([
       ['a', 'b, c'],
       ['say "hi"', 'd'],
+    ])
+  })
+})
+
+describe('htmlToText', () => {
+  it('turns Word list items into bullets under headings', () => {
+    const text = htmlToText('<h2>1) Site checks</h2><ul><li>Gas &amp; water</li><li>Power</li></ul>')
+    const d = parseTextList(text)
+    expect(d.items).toEqual([
+      { text: 'Gas & water', section: 'Site checks', indent: 0 },
+      { text: 'Power', section: 'Site checks', indent: 0 },
     ])
   })
 })

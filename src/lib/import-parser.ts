@@ -149,3 +149,19 @@ export function parseCsv(text: string): string[][] {
   }
   return rows
 }
+
+/** Flatten Word-converted HTML to text lines, marking list items as bullets. */
+export function htmlToText(html: string): string {
+  return html
+    .replace(/<li[^>]*>/gi, '\n• ')
+    .replace(/<\/(p|h[1-6]|tr|ul|ol)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/t[dh]>/gi, ' ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+}
