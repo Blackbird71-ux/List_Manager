@@ -445,6 +445,7 @@ function TemplateEditor({
   const [description, setDescription] = useState(template?.description ?? '')
   const [category, setCategory] = useState(template?.category ?? 'general')
   const [recurrence, setRecurrence] = useState(template?.recurrence ?? 'none')
+  const [requiresSignOff, setRequiresSignOff] = useState(template?.requiresSignOff ?? false)
   const [items, setItems] = useState<DraftItem[]>(() => {
     const source = template?.items ?? imported?.items.map((i) => ({ ...i, priority: null }))
     return source ? itemsToRows(source) : [{ text: '', priority: '' }]
@@ -473,6 +474,7 @@ function TemplateEditor({
         description: description.trim(),
         category: category.trim() || 'general',
         recurrence,
+        requiresSignOff,
         items: items.reduce<
           { text: string; priority: string | null; section: string; indent: number }[]
         >(
@@ -579,6 +581,21 @@ function TemplateEditor({
             )}
           </div>
         </div>
+
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={requiresSignOff}
+            onChange={(e) => setRequiresSignOff(e.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-accent"
+          />
+          <span>
+            Require manager sign-off
+            <span className="block text-xs text-faint">
+              Once finished, a manager or admin (not the person who finished it) must approve it.
+            </span>
+          </span>
+        </label>
 
         {/* Items */}
         <div>

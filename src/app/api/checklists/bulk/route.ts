@@ -102,7 +102,7 @@ export async function POST(request: Request) {
           }
           if (cl.status === 'completed') continue // already done
           // The shared funnel, so recurring checklists spawn their next instance.
-          await completeChecklist(cl.id)
+          await completeChecklist(cl.id, session.user.id)
           logActivity(cl.id, session.user.name, 'completed', 'bulk')
           success++
           break

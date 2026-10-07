@@ -20,6 +20,7 @@ import {
   RefreshCw,
   RotateCcw,
   Save,
+  ShieldCheck,
   Trash2,
   User as UserIcon,
   Users as UsersIcon,
@@ -183,6 +184,19 @@ export function ChecklistDetailClient({
     }
   }
 
+  async function signOff(decision: 'approve' | 'reject') {
+    const note =
+      prompt(decision === 'approve' ? 'Sign-off note (optional):' : 'Why is it being sent back?')?.trim() ?? null
+    if (note === null || (decision === 'reject' && !note)) return
+    const res = await fetch(`/api/checklists/${checklistId}/sign-off`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision, note }),
+    })
+    if (!res.ok) alert((await res.json().catch(() => ({}))).error ?? 'Could not record the decision')
+    load()
+  }
+
   async function removeChecklist() {
     if (!checklist) return
     if (!confirm(`Delete "${checklist.title}"? This cannot be undone.`)) return
@@ -208,6 +222,9 @@ export function ChecklistDetailClient({
   const total = checklist.items.length
   const pct = total > 0 ? Math.round((done / total) * 100) : 0
   const completed = checklist.status === 'completed'
+  const pendingSignOff = completed && checklist.requiresSignOff && !checklist.signedOffAt
+  const isApprover = currentUserRole === 'admin' || currentUserRole === 'manager'
+  const canApprove = pendingSignOff && isApprover && checklist.completedById !== currentUserId
   const canManage =
     currentUserRole === 'admin' ||
     currentUserRole === 'manager' ||
@@ -233,6 +250,35 @@ export function ChecklistDetailClient({
               Open it
             </Link>
           </span>
+        </div>
+      )}
+
+      {pendingSignOff && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn">
+          <ShieldCheck className="h-4 w-4 shrink-0" />
+          <span className="flex-1">
+            {canApprove
+              ? 'This list is finished and needs your sign-off.'
+              : isApprover && checklist.completedById === currentUserId
+                ? 'Awaiting sign-off — another manager must approve it, as you completed it.'
+                : 'Awaiting manager sign-off.'}
+          </span>
+          {canApprove && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => signOff('approve')}
+                className="rounded-lg bg-ok px-3 py-1.5 text-sm font-semibold text-accent-ink hover:opacity-90"
+              >
+                Approve
+              </button>
+              <button
+                onClick={() => signOff('reject')}
+                className="rounded-lg border border-danger/40 px-3 py-1.5 text-sm font-semibold text-danger hover:bg-danger-soft"
+              >
+                Send back
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -269,6 +315,31 @@ export function ChecklistDetailClient({
                 </span>
               )}
               <span>created by {checklist.createdBy.name}</span>
+              {checklist.signedOffAt && (
+                <span className="flex items-center gap-1 text-ok">
+                  <ShieldCheck className="h-3 w-3" /> signed off by {checklist.signedOffByName} ·{' '}
+                  {new Date(checklist.signedOffAt).toLocaleDateString()}
+                  {checklist.signOffNote && ` — ${checklist.signOffNote}`}
+                </span>
+              )}
+              {(canManage || checklist.requiresSignOff) && (
+                <label
+                  className={cn(
+                    'flex items-center gap-1',
+                    completed && !isApprover && 'opacity-60'
+                  )}
+                  title="Require a manager (other than whoever finishes it) to approve this list"
+                >
+                  <input
+                    type="checkbox"
+                    checked={checklist.requiresSignOff}
+                    disabled={!canManage || (completed && !isApprover)}
+                    onChange={(e) => patchChecklist({ requiresSignOff: e.target.checked })}
+                    className="h-3.5 w-3.5 accent-accent"
+                  />
+                  needs sign-off
+                </label>
+              )}
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -516,6 +587,9 @@ export function ChecklistDetailClient({
 const ACTION_LABELS: Record<string, string> = {
   created: 'created this checklist',
   item_checked: 'checked off',
+  signed_off: 'signed off',
+  sign_off_rejected: 'sent back for rework',
+  sign_off_setting: 'changed the sign-off setting',
   item_unchecked: 'unchecked',
   item_added: 'added item',
   item_removed: 'removed item',

@@ -50,6 +50,7 @@ const createSchema = z.object({
   description: z.string().trim().max(2000).default(''),
   category: z.string().trim().max(100).default('general'),
   recurrence: z.enum(RECURRENCE_OPTIONS).default('none'),
+  requiresSignOff: z.boolean().default(false),
   items: z.array(itemSchema).default([]),
   customFields: z.array(fieldSchema).default([]),
 })
@@ -66,13 +67,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
   }
 
-  const { title, description, category, recurrence, items, customFields } = parsed.data
+  const { title, description, category, recurrence, requiresSignOff, items, customFields } = parsed.data
   const template = await prisma.template.create({
     data: {
       title,
       description,
       category: category || 'general',
       recurrence,
+      requiresSignOff,
       organizationId: session.user.organizationId,
       createdById: session.user.id,
       items: {

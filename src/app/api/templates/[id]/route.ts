@@ -48,6 +48,7 @@ const patchSchema = z.object({
   category: z.string().trim().max(100).optional(),
   recurrence: z.enum(RECURRENCE_OPTIONS).optional(),
   archived: z.boolean().optional(),
+  requiresSignOff: z.boolean().optional(),
   // When present, items/customFields replace the template's lists wholesale.
   items: z.array(itemSchema).optional(),
   customFields: z.array(fieldSchema).optional(),

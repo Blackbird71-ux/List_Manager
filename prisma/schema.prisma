@@ -129,6 +129,8 @@ model Template {
   // "none" | "daily" | "weekly" | "fortnightly" | "monthly" | "quarterly" | "yearly"
   recurrence  String   @default("none")
   archived    Boolean  @default(false)
+  // Lists made from this template need manager approval once finished.
+  requiresSignOff Boolean @default(false)
   // Bumped whenever the template's items or fields are edited, so completed
   // checklists can show which version of the template they ran from.
   version     Int      @default(1)
@@ -191,6 +193,15 @@ model Checklist {
   completedAt DateTime?
   // Reminder offset in hours before dueDate (24 = 1 day before, null = no reminder)
   reminderOffsetHours Int?
+
+  // Manager sign-off (four-eyes): when requiresSignOff is set, a finished list
+  // is pending until someone other than completedById approves it.
+  requiresSignOff Boolean   @default(false)
+  completedById   String?
+  signedOffById   String?
+  signedOffByName String?
+  signedOffAt     DateTime?
+  signOffNote     String    @default("")
 
   templateId String?
   template   Template? @relation(fields: [templateId], references: [id], onDelete: SetNull)

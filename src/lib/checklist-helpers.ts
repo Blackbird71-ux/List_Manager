@@ -118,6 +118,7 @@ export async function createChecklistFromTemplate(params: {
       description: template.description,
       category: template.category,
       recurrence: template.recurrence,
+      requiresSignOff: template.requiresSignOff,
       priority: params.priority ?? 'medium',
       visibility,
       dueDate: params.dueDate ?? null,
@@ -162,6 +163,16 @@ export async function createChecklistFromTemplate(params: {
   return checklist
 }
 
+/** Reopening a list voids any earlier completion and sign-off. */
+export const CLEAR_COMPLETION = {
+  completedAt: null,
+  completedById: null,
+  signedOffById: null,
+  signedOffByName: null,
+  signedOffAt: null,
+  signOffNote: '',
+}
+
 type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
 
 interface CloneSource {
@@ -178,6 +189,7 @@ interface CloneSource {
   createdById: string
   assignedToId: string | null
   reminderOffsetHours: number | null
+  requiresSignOff: boolean
   items: { text: string; priority: string | null; section: string; indent: number; assignedToId: string | null }[]
 }
 
@@ -202,6 +214,7 @@ async function cloneForNextRun(
       visibility: source.visibility,
       dueDate,
       reminderOffsetHours: source.reminderOffsetHours,
+      requiresSignOff: source.requiresSignOff,
       templateId: source.templateId,
       // The clone copies the source's items, so it ran from the same version.
       templateVersion: source.templateVersion,
@@ -326,7 +339,7 @@ export async function resetChecklist(checklistId: string): Promise<boolean> {
     }),
     prisma.checklist.update({
       where: { id: checklistId },
-      data: { status: 'active', completedAt: null },
+      data: { status: 'active', ...CLEAR_COMPLETION },
     }),
   ])
   return true
@@ -340,7 +353,10 @@ export async function resetChecklist(checklistId: string): Promise<boolean> {
  * Called from the item-toggle route (all items checked) and the checklist
  * PATCH route (manual status change).
  */
-export async function completeChecklist(checklistId: string): Promise<{ spawnedId: string | null }> {
+export async function completeChecklist(
+  checklistId: string,
+  actorId?: string
+): Promise<{ spawnedId: string | null }> {
   const checklist = await prisma.checklist.findUnique({
     where: { id: checklistId },
     include: { items: { orderBy: { sortOrder: 'asc' } } },
@@ -350,7 +366,7 @@ export async function completeChecklist(checklistId: string): Promise<{ spawnedI
   if (checklist.status !== 'completed') {
     await prisma.checklist.update({
       where: { id: checklistId },
-      data: { status: 'completed', completedAt: new Date() },
+      data: { status: 'completed', completedAt: new Date(), completedById: actorId ?? null },
     })
     // A finished checklist needs no "due soon" nudge.
     await prisma.reminder.deleteMany({ where: { checklistId, sent: false } })

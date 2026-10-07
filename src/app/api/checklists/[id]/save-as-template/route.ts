@@ -24,6 +24,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       description: checklist.description,
       category: checklist.category,
       recurrence: checklist.recurrence,
+      requiresSignOff: checklist.requiresSignOff,
       organizationId: session.user.organizationId,
       createdById: session.user.id,
       items: {

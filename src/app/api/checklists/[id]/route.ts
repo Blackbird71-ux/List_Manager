@@ -4,7 +4,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { RECURRENCE_OPTIONS } from '@/lib/recurrence'
 import { canAccessChecklist, canManageChecklist, checklistAccessWhere } from '@/lib/access'
-import { completeChecklist, getChecklistInclude, generateRemindersForChecklist, collectReminderUserIds } from '@/lib/checklist-helpers'
+import { CLEAR_COMPLETION, completeChecklist, getChecklistInclude, generateRemindersForChecklist, collectReminderUserIds } from '@/lib/checklist-helpers'
 import { notify } from '@/lib/notifications'
 import { logActivity } from '@/lib/activity'
 
@@ -36,6 +36,7 @@ const patchSchema = z.object({
   reminderOffsetHours: z.number().int().nullish(),
   status: z.enum(['active', 'completed']).optional(),
   visibility: z.enum(['team', 'private', 'department']).optional(),
+  requiresSignOff: z.boolean().optional(),
   departmentIds: z.array(z.string().min(1)).max(50).optional(),
   sharedUserIds: z.array(z.string().min(1)).max(100).optional(),
   fieldValues: z
@@ -58,7 +59,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   const existing = await prisma.checklist.findFirst({
     where: { id, ...checklistAccessWhere(session.user.id, session.user.role, session.user.organizationId) },
-    select: { id: true, status: true, assignedToId: true, title: true },
+    select: { id: true, status: true, assignedToId: true, title: true, requiresSignOff: true },
   })
   if (!existing) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -73,12 +74,27 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     visibility,
     departmentIds,
     sharedUserIds,
+    requiresSignOff,
     ...scalars
   } = parsed.data
 
   // Visibility and sharing are managed by the creator, managers and admins.
   if (visibility !== undefined || departmentIds !== undefined || sharedUserIds !== undefined) {
     const allowed = await canManageChecklist(id, session.user.id, session.user.role, session.user.organizationId)
+    if (!allowed) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+  }
+
+  // The sign-off requirement is set by the creator, managers and admins. Once a
+  // list is finished, only a manager or admin may waive it (else the person who
+  // did the work could switch the check off).
+  if (requiresSignOff !== undefined && requiresSignOff !== existing.requiresSignOff) {
+    const isApprover = session.user.role === 'admin' || session.user.role === 'manager'
+    const allowed =
+      isApprover ||
+      (!(!requiresSignOff && existing.status === 'completed') &&
+        (await canManageChecklist(id, session.user.id, session.user.role, session.user.organizationId)))
     if (!allowed) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
@@ -119,9 +135,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (assignedToId !== undefined) data.assignedToId = assignedToId ?? null
   if (reminderOffsetHours !== undefined) data.reminderOffsetHours = reminderOffsetHours ?? null
   if (visibility !== undefined) data.visibility = visibility
+  if (requiresSignOff !== undefined) data.requiresSignOff = requiresSignOff
   if (status === 'active' && existing.status === 'completed') {
     data.status = 'active'
-    data.completedAt = null
+    Object.assign(data, CLEAR_COMPLETION)
   }
 
   if (fieldValues) {
@@ -184,12 +201,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   // Completion goes through the shared funnel so recurrence spawns exactly once.
   if (status === 'completed' && existing.status !== 'completed') {
-    await completeChecklist(id)
+    await completeChecklist(id, session.user.id)
     logActivity(id, session.user.name, 'completed')
   } else if (status === 'active' && existing.status === 'completed') {
     logActivity(id, session.user.name, 'reopened')
   }
 
+  if (requiresSignOff !== undefined && requiresSignOff !== existing.requiresSignOff) {
+    logActivity(id, session.user.name, 'sign_off_setting', requiresSignOff ? 'sign-off required' : 'sign-off not required')
+  }
   if (visibility !== undefined) {
     logActivity(id, session.user.name, 'visibility_changed', `now ${visibility}`)
   }

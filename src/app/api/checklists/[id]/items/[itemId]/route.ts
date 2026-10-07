@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { checklistAccessWhere } from '@/lib/access'
-import { completeChecklist } from '@/lib/checklist-helpers'
+import { CLEAR_COMPLETION, completeChecklist } from '@/lib/checklist-helpers'
 import { logActivity } from '@/lib/activity'
 
 const patchSchema = z.object({
@@ -89,7 +89,7 @@ export async function PATCH(
       where: { checklistId: id, checked: false },
     })
     if (remaining === 0) {
-      await completeChecklist(id)
+      await completeChecklist(id, session.user.id)
       checklistCompleted = true
       logActivity(id, session.user.name, 'completed')
     }
@@ -97,7 +97,7 @@ export async function PATCH(
     logActivity(id, session.user.name, 'item_unchecked', updated.text)
     const reopened = await prisma.checklist.updateMany({
       where: { id, status: 'completed' },
-      data: { status: 'active', completedAt: null },
+      data: { status: 'active', ...CLEAR_COMPLETION },
     })
     if (reopened.count > 0) {
       logActivity(id, session.user.name, 'reopened')

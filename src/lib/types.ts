@@ -46,6 +46,7 @@ export interface ApiTemplate {
   category: string
   recurrence: string
   archived: boolean
+  requiresSignOff: boolean
   createdAt: string
   updatedAt: string
   items: ApiTemplateItem[]
@@ -98,6 +99,11 @@ export interface ApiChecklist {
   nextInstanceId: string | null
   visibility: string // "team" | "department" | "private"
   reminderOffsetHours: number | null
+  requiresSignOff: boolean
+  completedById: string | null
+  signedOffByName: string | null
+  signedOffAt: string | null
+  signOffNote: string
   createdAt: string
   items: ApiChecklistItem[]
   fieldValues: ApiCustomFieldValue[]
