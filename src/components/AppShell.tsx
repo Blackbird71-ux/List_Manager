@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
 import {
   BarChart3,
+  CalendarDays,
   CheckCircle2,
   ClipboardList,
   LayoutTemplate,
@@ -49,6 +50,7 @@ export function AppShell({ user, children }: AppShellProps) {
     { href: '/', label: 'Checklists', icon: ListChecks },
     { href: '/my-work', label: 'My Work', icon: UserCheck },
     { href: '/my-team', label: 'My Team', icon: Users2 },
+    { href: '/calendar', label: 'Calendar', icon: CalendarDays },
     { href: '/completed', label: 'Completed', icon: CheckCircle2 },
     { href: '/templates', label: 'Templates', icon: LayoutTemplate },
     ...(user.role === 'admin' || user.role === 'manager'

@@ -9,6 +9,9 @@ const itemSchema = z.object({
   priority: z.enum(['low', 'medium', 'high']).nullish(),
   section: z.string().trim().max(200).default(''),
   indent: z.number().int().min(0).max(1).default(0),
+  conditionIndex: z.number().int().min(0).nullish(),
+  conditionResult: z.enum(['', 'pass', 'fail', 'na']).default(''),
+  dueOffsetDays: z.number().int().min(0).max(365).nullish(),
   sortOrder: z.number().int().min(0).default(0),
 })
 
@@ -25,6 +28,7 @@ const templateSchema = z.object({
   description: z.string().trim().max(2000).default(''),
   category: z.string().trim().max(100).default('general'),
   recurrence: z.enum(RECURRENCE_OPTIONS).default('none'),
+  requiresSignOff: z.boolean().default(false),
   items: z.array(itemSchema).max(200).default([]),
   customFields: z.array(fieldSchema).max(50).default([]),
 })
@@ -56,6 +60,7 @@ export async function POST(request: Request) {
           description: t.description,
           category: t.category || 'general',
           recurrence: t.recurrence,
+          requiresSignOff: t.requiresSignOff,
           version: 1,
           archived: false,
           organizationId: session.user.organizationId,
@@ -68,6 +73,9 @@ export async function POST(request: Request) {
                 priority: item.priority ?? null,
                 section: item.section,
                 indent: item.indent,
+                conditionIndex: item.conditionIndex ?? null,
+                conditionResult: item.conditionIndex == null ? '' : item.conditionResult,
+                dueOffsetDays: item.dueOffsetDays ?? null,
                 sortOrder: idx,
               })),
           },

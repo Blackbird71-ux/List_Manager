@@ -37,11 +37,15 @@ export async function GET() {
       description: t.description,
       category: t.category,
       recurrence: t.recurrence,
+      requiresSignOff: t.requiresSignOff,
       items: t.items.map((i) => ({
         text: i.text,
         priority: i.priority,
         section: i.section,
         indent: i.indent,
+        conditionIndex: i.conditionIndex,
+        conditionResult: i.conditionResult,
+        dueOffsetDays: i.dueOffsetDays,
         sortOrder: i.sortOrder,
       })),
       customFields: t.customFields.map((f) => ({

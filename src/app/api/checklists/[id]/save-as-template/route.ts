@@ -33,6 +33,11 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
           priority: item.priority,
           section: item.section,
           indent: item.indent,
+          conditionIndex: checklist.items.findIndex((c) => c.id === item.conditionItemId) >= 0
+            ? checklist.items.findIndex((c) => c.id === item.conditionItemId)
+            : null,
+          conditionResult: checklist.items.some((c) => c.id === item.conditionItemId) ? item.conditionResult : '',
+          dueOffsetDays: item.dueOffsetDays,
           sortOrder: idx,
         })),
       },

@@ -28,6 +28,9 @@ export interface ApiTemplateItem {
   section: string
   indent: number
   sortOrder: number
+  conditionIndex: number | null
+  conditionResult: string
+  dueOffsetDays: number | null
 }
 
 export interface ApiCustomFieldDef {
@@ -73,6 +76,10 @@ export interface ApiChecklistItem {
   section: string
   indent: number
   sortOrder: number
+  conditionItemId: string | null
+  conditionResult: string
+  dueOffsetDays: number | null
+  dueDate: string | null
   assignedTo: ApiUserRef | null
   checkedByName: string | null
   checkedAt: string | null

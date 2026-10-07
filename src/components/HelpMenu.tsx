@@ -130,6 +130,7 @@ function baseTopicsFor(pathname: string): { heading: string; topics: HelpTopic[]
             'Tick the box at the right of an item to mark it done — your name and the time are recorded.',
             'Ticking the last item completes the whole checklist automatically.',
             'Unticking an item on a completed checklist reopens it.',
+            'Use "Mark all remaining" above the list to tick everything left in one go — as Done, Pass or N/A.',
           ],
         },
         {
@@ -138,7 +139,16 @@ function baseTopicsFor(pathname: string): { heading: string; topics: HelpTopic[]
             'Click an item (or its speech-bubble button) to open its details in the side column: assignee, priority, due date, notes and attachments.',
             'Result: mark an item Pass, Fail or N/A. The result shows as a badge on the row and is kept in the record.',
             'The + button adds a subtask beneath an item. Subtasks are indented under their parent.',
+            '"Only show this item when…" hides an item until an earlier item has the chosen result (e.g. show "Raise defect" only when "Smoke alarm" is Fail). Hidden items do not count towards completion.',
+            '"Due days before list" gives the item its own due date, that many days before the list is due.',
+            'On a phone, "Take photo" opens the camera and attaches the picture to the item.',
             'Assignees are notified when an item or checklist is assigned to them.',
+          ],
+        },
+        {
+          title: 'Printing',
+          points: [
+            'The printer icon in the header opens a clean record of the list — results, who ticked what and when, sign-off — ready to print or save as PDF.',
           ],
         },
         {
@@ -267,6 +277,7 @@ function baseTopicsFor(pathname: string): { heading: string; topics: HelpTopic[]
             'A template is a reusable master. Starting a checklist from it makes a copy — the master is never changed by day-to-day work.',
             'Templates carry items, custom fields, a default category, priority and recurrence.',
             'Use "Start checklist" on a template to create a working copy.',
+            'Each template item can have an "Only if…" condition and a "Due N days before list" offset; both carry into every checklist started from it.',
           ],
         },
         {
@@ -346,6 +357,13 @@ function baseTopicsFor(pathname: string): { heading: string; topics: HelpTopic[]
           ],
         },
         {
+          title: 'Escalation & webhook (admins)',
+          points: [
+            'Escalation: set a number of days and, each morning at 08:00, admins and managers are notified about active lists overdue by that long. Each list is escalated once. 0 switches it off.',
+            'Webhook: a public https address that receives a signed JSON event when a list is completed or signed off. Verify the X-ListsManager-Signature header with the signing secret shown here.',
+          ],
+        },
+        {
           title: 'Remote access (admins)',
           points: [
             'The Remote access section manages the Cloudflare tunnel that makes the app reachable from outside the network.',
@@ -393,6 +411,9 @@ function baseTopicsFor(pathname: string): { heading: string; topics: HelpTopic[]
         points: [
           'This page shows active checklists you can see — use the filters to narrow by category, assignee or search.',
           'Overdue checklists are flagged; due dates keep the team honest.',
+          'Click a tile (e.g. Overdue) to filter the list to those checklists. Use the due-date filter for "today" or "next 7 days".',
+          'Save a combination of filters with "+ Save current filters"; saved views appear as chips and follow your account.',
+          'The Calendar page shows lists and dated items by month.',
         ],
       },
       {

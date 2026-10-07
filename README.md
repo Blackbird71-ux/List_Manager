@@ -24,6 +24,21 @@ due date advanced by the recurrence interval.
 - **Subtasks & sections** — items can have indented subtasks; imported lists keep
   their section headings, which collapse and show per-section progress.
 - **Pass / Fail / N/A** — each item can carry a result, shown as a badge on the row.
+- **Conditional items** — an item can be shown only when an earlier item has a
+  chosen result (e.g. Fail); hidden items don't count towards completion.
+- **Relative due dates** — items can be due N days before the list's due date; set
+  on templates so every run gets the right dates.
+- **Mark all remaining** — tick everything left as Done, Pass or N/A in one click.
+- **Dashboard filters & Calendar** — clickable stat tiles, a due-today / next-7-days
+  filter, saved filter views (per account) and a month Calendar of due lists
+  and items.
+- **Printable record** — a clean print view of a list with results, who/when and
+  sign-off, for PDF or paper.
+- **Photo capture** — on a phone, take a photo straight into an item.
+- **Escalation** — admins and managers are notified when a list has been overdue
+  for a set number of days (Settings, primary admin).
+- **Webhook** — a signed JSON event is posted to an https address when a list is
+  completed or signed off (Settings, primary admin).
 - **Reminders** — set a due date plus a reminder offset (1 hour to 3 days before)
   and the assignee is notified.
 - **Supporting documents** — files attached to the whole checklist, separate from
@@ -146,7 +161,9 @@ docker compose logs -f            # watch migrations + startup
   with a pre-deploy DB backup kept in `/data/backups` (last 10).
 - A cron job inside the container backs up the DB daily at 03:00 (last 14 kept,
   local to the NAS), copies it to Google Drive at 03:30 (see below) and sends the
-  overdue digest at 07:00.
+  overdue digest at 07:00 and escalation of long-overdue lists at 08:00.
+  Running again a list or recurring copy duplicates its supporting documents as
+  separate files; deleting a list or item removes its files from disk.
 - Uploaded files (item attachments and supporting documents) are stored under
   `/data/attachments`. The local DB backups don't include them, but the Google
   Drive backup does.

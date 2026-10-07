@@ -1,9 +1,10 @@
+import { sendWebhook } from '@/lib/webhook'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { checklistAccessWhere } from '@/lib/access'
-import { CLEAR_COMPLETION } from '@/lib/checklist-helpers'
+import { CLEAR_COMPLETION, spawnAfterSignOff } from '@/lib/checklist-helpers'
 import { checkSignOff } from '@/lib/sign-off'
 import { notify } from '@/lib/notifications'
 import { logActivity } from '@/lib/activity'
@@ -68,7 +69,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (done.count === 0) {
       return NextResponse.json({ error: 'Nothing to sign off' }, { status: 409 })
     }
+    void sendWebhook('signed_off', id)
     logActivity(id, session.user.name, 'signed_off', note)
+    await spawnAfterSignOff(id)
     if (notifyId !== session.user.id) {
       await notify(notifyId, 'Checklist signed off', `${session.user.name} signed off "${checklist.title}".`, id)
     }

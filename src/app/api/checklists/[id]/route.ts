@@ -7,6 +7,7 @@ import { canAccessChecklist, canManageChecklist, checklistAccessWhere } from '@/
 import { CLEAR_COMPLETION, completeChecklist, getChecklistInclude, generateRemindersForChecklist, collectReminderUserIds } from '@/lib/checklist-helpers'
 import { notify } from '@/lib/notifications'
 import { logActivity } from '@/lib/activity'
+import { deleteStoredFiles, storagePathsForChecklist } from '@/lib/attachment-files'
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
@@ -273,9 +274,16 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   if (!allowed) {
     return NextResponse.json({ error: 'Only the creator or a manager can delete this' }, { status: 403 })
   }
+  // Collect file names first: the cascade removes the rows, and the files must go too.
+  const paths = await storagePathsForChecklist(id)
   // Idempotent: a concurrent delete is fine, but log anything else.
-  await prisma.checklist
+  const deleted = await prisma.checklist
     .delete({ where: { id } })
-    .catch((err) => console.error('Checklist delete failed:', err))
+    .then(() => true)
+    .catch((err) => {
+      console.error('Checklist delete failed:', err)
+      return false
+    })
+  if (deleted) await deleteStoredFiles(paths)
   return NextResponse.json({ ok: true })
 }

@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   Bell,
   Calendar,
+  Camera,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -17,6 +18,7 @@ import {
   MessageSquare,
   Paperclip,
   Plus,
+  Printer,
   RefreshCw,
   RotateCcw,
   Save,
@@ -30,6 +32,7 @@ import type { ApiActivity, ApiChecklist, ApiChecklistItem, ApiComment, ApiUser }
 import { DepartmentPicker } from '@/components/DepartmentPicker'
 import { useHelpTags } from '@/components/HelpMenu'
 import { cn } from '@/lib/utils'
+import { hiddenItemIds } from '@/lib/conditions'
 
 // ChecklistItem.dueDate is new in the schema; ApiChecklistItem doesn't declare it yet.
 type ItemWithDue = ApiChecklistItem & { dueDate?: string | null }
@@ -156,6 +159,21 @@ export function ChecklistDetailClient({
     }
   }
 
+  async function markAll(mode: 'tick' | 'pass' | 'na') {
+    const label = mode === 'tick' ? 'tick' : `mark ${mode === 'na' ? 'N/A' : 'Pass'}`
+    if (!confirm(`${label[0].toUpperCase()}${label.slice(1)} every remaining item on this list?`)) return
+    const res = await fetch(`/api/checklists/${checklistId}/items/bulk`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode }),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      if (data.checklistCompleted) setJustCompleted(true)
+      load()
+    }
+  }
+
   async function addItem(e: React.FormEvent) {
     e.preventDefault()
     const text = newItemText.trim()
@@ -267,8 +285,10 @@ export function ChecklistDetailClient({
   }
 
   const selectedItem = checklist.items.find((i) => i.id === selectedId) ?? null
-  const done = checklist.items.filter((i) => i.checked).length
-  const total = checklist.items.length
+  // Items behind an unmet condition are out of the list and out of the count.
+  const hidden = hiddenItemIds(checklist.items)
+  const done = checklist.items.filter((i) => i.checked && !hidden.has(i.id)).length
+  const total = checklist.items.length - hidden.size
   const pct = total > 0 ? Math.round((done / total) * 100) : 0
   const completed = checklist.status === 'completed'
   const pendingSignOff = completed && checklist.requiresSignOff && !checklist.signedOffAt
@@ -497,6 +517,13 @@ export function ChecklistDetailClient({
                 <CheckCircle2 className="h-4 w-4" /> Complete
               </button>
             )}
+            <Link
+              href={`/checklists/${checklistId}/print`}
+              className="rounded-lg p-2 text-muted hover:bg-hover hover:text-ink"
+              title="Printable record"
+            >
+              <Printer className="h-4 w-4" />
+            </Link>
             <button
               onClick={saveAsTemplate}
               className="rounded-lg p-2 text-muted hover:bg-hover hover:text-ink"
@@ -601,8 +628,23 @@ export function ChecklistDetailClient({
       {!wide && docsBlock}
 
       {/* Items */}
+      {!completed && total - done > 1 && (
+        <div className="flex items-center justify-end gap-1.5 text-xs text-muted">
+          <span>Mark all remaining:</span>
+          {(['tick', 'pass', 'na'] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => markAll(m)}
+              className="rounded-lg border border-border px-2 py-1 font-medium uppercase hover:bg-hover"
+            >
+              {m === 'tick' ? 'Done' : m === 'na' ? 'N/A' : 'Pass'}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="space-y-1 md:space-y-1">
-        {checklist.items.map((item, idx) => (
+        {checklist.items.map((item, idx) => hidden.has(item.id) ? null : (
           <div key={item.id} className={cn('space-y-1', item.indent > 0 && 'ml-8')}>
             {item.section && item.section !== (checklist.items[idx - 1]?.section ?? '') && (
               <button
@@ -627,6 +669,7 @@ export function ChecklistDetailClient({
               checklistId={checklistId}
               item={item}
               users={users}
+              earlier={checklist.items.slice(0, idx)}
               wide={wide}
               selected={selectedId === item.id}
               onSelect={() => setSelectedId((cur) => (cur === item.id ? null : item.id))}
@@ -705,6 +748,7 @@ export function ChecklistDetailClient({
               checklistId={checklistId}
               item={selectedItem}
               users={users}
+              earlier={checklist.items.slice(0, Math.max(0, checklist.items.findIndex((i) => i.id === selectedItem.id)))}
               onChanged={load}
               panel
             />
@@ -1352,12 +1396,15 @@ function ItemDetails({
   checklistId,
   item,
   users,
+  earlier,
   onChanged,
   panel,
 }: {
   checklistId: string
   item: ItemWithDue
   users: ApiUser[]
+  // Items above this one: the only ones a condition can depend on.
+  earlier: ApiChecklistItem[]
   onChanged: () => void
   panel?: boolean
 }) {
@@ -1470,6 +1517,58 @@ function ItemDetails({
           </div>
           </div>
 
+          <div className={cn('grid gap-3', panel ? 'grid-cols-2' : 'sm:grid-cols-2 md:grid-cols-4')}>
+            <label className="block text-sm sm:col-span-2">
+              <span className="mb-1 block text-xs font-medium text-muted">Only show this item when…</span>
+              <span className="flex gap-1.5">
+                <select
+                  value={item.conditionItemId ?? ''}
+                  onChange={(e) =>
+                    patchItem(
+                      e.target.value
+                        ? { conditionItemId: e.target.value, conditionResult: item.conditionResult || 'fail' }
+                        : { conditionItemId: null }
+                    )
+                  }
+                  className="min-w-0 flex-1 rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
+                >
+                  <option value="">Always show</option>
+                  {earlier.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.text.length > 40 ? `${e.text.slice(0, 40)}…` : e.text}
+                    </option>
+                  ))}
+                </select>
+                {item.conditionItemId && (
+                  <select
+                    value={item.conditionResult}
+                    onChange={(e) => patchItem({ conditionResult: e.target.value })}
+                    className="rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
+                  >
+                    <option value="pass">is Pass</option>
+                    <option value="fail">is Fail</option>
+                    <option value="na">is N/A</option>
+                  </select>
+                )}
+              </span>
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-muted">Due days before list</span>
+              <input
+                type="number"
+                min={0}
+                max={365}
+                defaultValue={item.dueOffsetDays ?? ''}
+                placeholder="—"
+                onBlur={(e) => {
+                  const v = e.target.value === '' ? null : Math.max(0, Math.min(365, Math.round(Number(e.target.value))))
+                  if (v !== (item.dueOffsetDays ?? null)) patchItem({ dueOffsetDays: v })
+                }}
+                className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
+              />
+            </label>
+          </div>
+
           <div className={cn("grid gap-3", !panel && "md:grid-cols-2")}>
           <label className="block text-sm">
             <span className="mb-1 block text-xs font-medium text-muted">Notes</span>
@@ -1516,6 +1615,22 @@ function ItemDetails({
               disabled={uploading}
               className="mt-1 block w-full text-xs text-muted file:mr-2 file:rounded-lg file:border-0 file:bg-hover file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-ink hover:file:bg-border-soft"
             />
+            {/* Phones and tablets: open the camera directly. */}
+            <label className="mt-1.5 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-hover lg:hidden">
+              <Camera className="h-4 w-4" /> Take photo
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                disabled={uploading}
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) uploadFile(file)
+                  e.target.value = ''
+                }}
+                className="hidden"
+              />
+            </label>
             {uploading && <p className="mt-1 text-xs text-faint">Uploading…</p>}
           </div>
           </div>
@@ -1527,6 +1642,7 @@ function ItemRow({
   checklistId,
   item,
   users,
+  earlier,
   wide,
   selected,
   onSelect,
@@ -1540,6 +1656,7 @@ function ItemRow({
   checklistId: string
   item: ItemWithDue
   users: ApiUser[]
+  earlier: ApiChecklistItem[]
   // On wide screens details open in the side panel; otherwise inline under the row.
   wide: boolean
   selected: boolean
@@ -1697,7 +1814,7 @@ function ItemRow({
       </div>
 
       {!wide && expanded && (
-        <ItemDetails checklistId={checklistId} item={item} users={users} onChanged={onChanged} />
+        <ItemDetails checklistId={checklistId} item={item} users={users} earlier={earlier} onChanged={onChanged} />
       )}
     </div>
   )

@@ -6,6 +6,8 @@ import { cn } from '@/lib/utils'
 import { TunnelSection } from '@/components/TunnelSection'
 import { EmailSection } from '@/components/EmailSection'
 import { DriveBackupSection } from '@/components/DriveBackupSection'
+import { EscalationSection } from '@/components/EscalationSection'
+import { WebhookSection } from '@/components/WebhookSection'
 import { PushSection } from '@/components/PushSection'
 import { EmailRemindersSection } from '@/components/EmailRemindersSection'
 
@@ -93,6 +95,8 @@ export function SettingsClient({
       {isPrimaryAdmin && <RegistrationSection />}
       {isPrimaryAdmin && <EmailSection />}
       {isPrimaryAdmin && <DriveBackupSection />}
+      {isPrimaryAdmin && <EscalationSection />}
+      {isPrimaryAdmin && <WebhookSection />}
       {isPrimaryAdmin && <TunnelSection />}
     </div>
   )

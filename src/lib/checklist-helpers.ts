@@ -1,8 +1,12 @@
+import { sendWebhook } from '@/lib/webhook'
 import { prisma } from '@/lib/prisma'
 import { computeNextDueDate, isRecurrence, type Recurrence } from '@/lib/recurrence'
 import { notify } from '@/lib/notifications'
 import { logActivity } from '@/lib/activity'
 import { formatInTz, todayStart } from '@/lib/timezone'
+import { copyChecklistAttachments } from '@/lib/attachment-files'
+import { hiddenItemIds, offsetDueDate } from '@/lib/conditions'
+import { randomUUID } from 'crypto'
 
 /**
  * Generate a Reminder record for a checklist if reminderOffsetHours is set
@@ -81,6 +85,56 @@ const checklistInclude = {
   departments: { select: { department: { select: { id: true, name: true } } } },
 }
 
+interface RunItemSource {
+  text: string
+  priority: string | null
+  section: string
+  indent: number
+  dueOffsetDays: number | null
+  assignedToId?: string | null
+  // Template items point at a position; checklist items at an item id.
+  conditionIndex?: number | null
+  conditionItemId?: string | null
+  id?: string
+  conditionResult: string
+}
+
+/**
+ * Item rows for a new run. Ids are generated up front so a conditional item
+ * can point at its controller, and per-item due dates follow the list's.
+ */
+function runItemRows(items: RunItemSource[], dueDate: Date | null) {
+  const ids = items.map(() => randomUUID())
+  const indexById = new Map(items.flatMap((i, idx) => (i.id ? [[i.id, idx] as const] : [])))
+  return items.map((item, idx) => {
+    const controller = item.conditionIndex ?? (item.conditionItemId ? indexById.get(item.conditionItemId) : undefined)
+    const linked = controller != null && controller >= 0 && controller < idx
+    return {
+      id: ids[idx],
+      text: item.text,
+      priority: item.priority,
+      section: item.section,
+      indent: item.indent,
+      sortOrder: idx,
+      assignedToId: item.assignedToId ?? null,
+      dueOffsetDays: item.dueOffsetDays,
+      dueDate: offsetDueDate(dueDate, item.dueOffsetDays),
+      conditionItemId: linked ? ids[controller] : null,
+      conditionResult: linked ? item.conditionResult : '',
+    }
+  })
+}
+
+/** Unticked items still to do, ignoring ones hidden by a condition. */
+export async function countRemainingItems(checklistId: string): Promise<number> {
+  const items = await prisma.checklistItem.findMany({
+    where: { checklistId },
+    select: { id: true, checked: true, result: true, conditionItemId: true, conditionResult: true },
+  })
+  const hidden = hiddenItemIds(items)
+  return items.filter((i) => !i.checked && !hidden.has(i.id)).length
+}
+
 export function getChecklistInclude() {
   return checklistInclude
 }
@@ -136,13 +190,7 @@ export async function createChecklistFromTemplate(params: {
         create: departmentIds.map((departmentId) => ({ departmentId })),
       },
       items: {
-        create: template.items.map((item, idx) => ({
-          text: item.text,
-          priority: item.priority,
-          section: item.section,
-          indent: item.indent,
-          sortOrder: idx,
-        })),
+        create: runItemRows(template.items, params.dueDate ?? null),
       },
       fieldValues: {
         create: template.customFields.map((f) => ({
@@ -175,6 +223,7 @@ export const CLEAR_COMPLETION = {
   signedOffByName: null,
   signedOffAt: null,
   signOffNote: '',
+  escalatedAt: null,
 }
 
 type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
@@ -194,7 +243,7 @@ interface CloneSource {
   assignedToId: string | null
   reminderOffsetHours: number | null
   requiresSignOff: boolean
-  items: { text: string; priority: string | null; section: string; indent: number; assignedToId: string | null }[]
+  items: (RunItemSource & { id: string; assignedToId: string | null; conditionItemId: string | null })[]
 }
 
 /**
@@ -226,14 +275,7 @@ async function cloneForNextRun(
       createdById: source.createdById,
       assignedToId: source.assignedToId,
       items: {
-        create: source.items.map((item, idx) => ({
-          text: item.text,
-          priority: item.priority,
-          section: item.section,
-          indent: item.indent,
-          sortOrder: idx,
-          assignedToId: item.assignedToId,
-        })),
+        create: runItemRows(source.items, dueDate),
       },
     },
   })
@@ -306,6 +348,8 @@ export async function runChecklistAgain(params: {
     return next
   })
 
+  await copyChecklistAttachments(source.id, copy.id)
+
   const reminderUserIds = await collectReminderUserIds(copy.id)
   generateRemindersForChecklist(copy.id, params.dueDate, source.reminderOffsetHours, reminderUserIds)
     .catch((err) => console.error('Reminder generation failed:', err))
@@ -374,14 +418,33 @@ export async function completeChecklist(
     })
     // A finished checklist needs no "due soon" nudge.
     await prisma.reminder.deleteMany({ where: { checklistId, sent: false } })
+    void sendWebhook('completed', checklistId)
   }
 
+  // A list that needs sign-off only renews once it is approved (see
+  // spawnAfterSignOff), so one that gets sent back doesn't leave a stray copy.
+  if (checklist.requiresSignOff) return { spawnedId: null }
+  return { spawnedId: await renewIfRecurring(checklist) }
+}
+
+/** Called when a manager approves a finished list: now the next run can be created. */
+export async function spawnAfterSignOff(checklistId: string): Promise<string | null> {
+  const checklist = await prisma.checklist.findUnique({
+    where: { id: checklistId },
+    include: { items: { orderBy: { sortOrder: 'asc' } } },
+  })
+  return checklist ? renewIfRecurring(checklist) : null
+}
+
+async function renewIfRecurring(
+  checklist: CloneSource & { dueDate: Date | null; nextInstanceId: string | null }
+): Promise<string | null> {
   // Respawn (Notion-style: completing a recurring list creates the next one)
   if (!isRecurrence(checklist.recurrence) || checklist.recurrence === 'none') {
-    return { spawnedId: null }
+    return null
   }
   if (checklist.nextInstanceId) {
-    return { spawnedId: null } // already spawned
+    return null // already spawned
   }
 
   const { spawned, nextDue } = await spawnNextInstance(checklist, checklist.recurrence)
@@ -398,7 +461,7 @@ export async function completeChecklist(
     )
   }
 
-  return { spawnedId: spawned?.id ?? null }
+  return spawned?.id ?? null
 }
 
 /**
@@ -432,6 +495,7 @@ async function spawnNextInstance(
 
   // The clone keeps the reminder setting, so schedule its reminders too.
   if (spawned) {
+    await copyChecklistAttachments(checklist.id, spawned.id)
     const userIds = await collectReminderUserIds(spawned.id)
     generateRemindersForChecklist(spawned.id, nextDue, checklist.reminderOffsetHours, userIds)
       .catch((err) => console.error('Reminder generation failed:', err))

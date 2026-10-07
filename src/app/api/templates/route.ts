@@ -36,6 +36,9 @@ const itemSchema = z.object({
   priority: z.enum(['low', 'medium', 'high']).nullish(),
   section: z.string().trim().max(200).default(''),
   indent: z.number().int().min(0).max(1).default(0),
+  conditionIndex: z.number().int().min(0).nullish(),
+  conditionResult: z.enum(['', 'pass', 'fail', 'na']).default(''),
+  dueOffsetDays: z.number().int().min(0).max(365).nullish(),
 })
 
 const fieldSchema = z.object({
@@ -83,6 +86,9 @@ export async function POST(request: Request) {
           priority: item.priority ?? null,
           section: item.section,
           indent: item.indent,
+          conditionIndex: item.conditionIndex ?? null,
+          conditionResult: item.conditionIndex == null ? '' : item.conditionResult,
+          dueOffsetDays: item.dueOffsetDays ?? null,
           sortOrder: idx,
         })),
       },

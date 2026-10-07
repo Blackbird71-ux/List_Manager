@@ -158,6 +158,11 @@ model TemplateItem {
   section    String  @default("")
   indent     Int     @default(0)
   sortOrder  Int     @default(0)
+  // Conditional item: only shown once the item at position conditionIndex has result conditionResult.
+  conditionIndex  Int?
+  conditionResult String  @default("")
+  // Due this many days before the checklist's due date.
+  dueOffsetDays   Int?
 
   @@index([templateId])
 }
@@ -197,6 +202,8 @@ model Checklist {
   // Manager sign-off (four-eyes): when requiresSignOff is set, a finished list
   // is pending until someone other than completedById approves it.
   requiresSignOff Boolean   @default(false)
+  // Set when an overdue-escalation notice has gone to managers (cleared on completion/new run).
+  escalatedAt DateTime?
   completedById   String?
   signedOffById   String?
   signedOffByName String?
@@ -325,6 +332,11 @@ model ChecklistItem {
   assignedTo   User?   @relation("ItemAssignee", fields: [assignedToId], references: [id])
   checkedByName String?
   checkedAt    DateTime?
+
+  // Conditional item: hidden until the controlling item has result conditionResult.
+  conditionItemId String?
+  conditionResult String  @default("")
+  dueOffsetDays   Int?
 
   attachments Attachment[]
 

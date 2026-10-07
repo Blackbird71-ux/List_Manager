@@ -25,6 +25,18 @@ const PRIORITY_STYLES: Record<string, string> = {
   low: 'bg-hover text-muted',
 }
 
+const VIEWS_KEY = 'lm.savedViews'
+
+interface SavedView {
+  name: string
+  scopeFilter: 'all' | 'mine' | 'private'
+  categoryFilter: string
+  assigneeFilter: string
+  search: string
+  overdueOnly: boolean
+  dueWindow: '' | 'today' | 'week'
+}
+
 export function DashboardClient({ currentUserId }: { currentUserId: string }) {
   const [checklists, setChecklists] = useState<ApiChecklist[]>([])
   const [completedTotal, setCompletedTotal] = useState(0)
@@ -36,6 +48,9 @@ export function DashboardClient({ currentUserId }: { currentUserId: string }) {
   const [categoryFilter, setCategoryFilter] = useState('')
   const [assigneeFilter, setAssigneeFilter] = useState('')
   const [search, setSearch] = useState('')
+  const [overdueOnly, setOverdueOnly] = useState(false)
+  const [dueWindow, setDueWindow] = useState<'' | 'today' | 'week'>('')
+  const [views, setViews] = useState<SavedView[]>([])
   const [showCreate, setShowCreate] = useState(false)
   const router = useRouter()
 
@@ -123,6 +138,53 @@ export function DashboardClient({ currentUserId }: { currentUserId: string }) {
     [checklists]
   )
 
+  // Saved filter combinations are stored against the account. Views saved earlier in
+  // this browser are moved across the first time.
+  useEffect(() => {
+    fetch('/api/saved-views')
+      .then((res) => res.json())
+      .then((data) => {
+        let list: SavedView[] = Array.isArray(data.views) ? data.views : []
+        if (list.length === 0) {
+          try {
+            const old = JSON.parse(localStorage.getItem(VIEWS_KEY) ?? '[]')
+            if (Array.isArray(old)) list = old.filter((v) => v && typeof v.name === 'string')
+            if (list.length > 0) persistViews(list)
+            localStorage.removeItem(VIEWS_KEY)
+          } catch {
+            // unreadable storage: start with no saved views
+          }
+        }
+        setViews(list)
+      })
+      .catch(() => undefined)
+  }, [])
+
+  function persistViews(next: SavedView[]) {
+    setViews(next)
+    fetch('/api/saved-views', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ views: next }),
+    }).catch(() => undefined)
+  }
+
+  function saveView() {
+    const name = prompt('Name this view:')?.trim()
+    if (!name) return
+    const view: SavedView = { name, scopeFilter, categoryFilter, assigneeFilter, search, overdueOnly, dueWindow }
+    persistViews([...views.filter((v) => v.name !== name), view])
+  }
+
+  function applyView(v: SavedView) {
+    setScopeFilter(v.scopeFilter)
+    setCategoryFilter(v.categoryFilter)
+    setAssigneeFilter(v.assigneeFilter)
+    setSearch(v.search)
+    setOverdueOnly(v.overdueOnly)
+    setDueWindow(v.dueWindow)
+  }
+
   const filtered = useMemo(() => {
     return checklists.filter((c) => {
       if (scopeFilter === 'mine') {
@@ -137,10 +199,20 @@ export function DashboardClient({ currentUserId }: { currentUserId: string }) {
       if (assigneeFilter === 'me' && c.assignedTo?.id !== currentUserId) return false
       if (assigneeFilter && assigneeFilter !== 'me' && c.assignedTo?.id !== assigneeFilter)
         return false
+      if (overdueOnly && !(c.dueDate && new Date(c.dueDate) < new Date())) return false
+      if (dueWindow) {
+        if (!c.dueDate) return false
+        const due = new Date(c.dueDate)
+        const start = new Date()
+        start.setHours(0, 0, 0, 0)
+        const end = new Date(start)
+        end.setDate(end.getDate() + (dueWindow === 'today' ? 1 : 7))
+        if (due < start || due >= end) return false
+      }
       if (search && !c.title.toLowerCase().includes(search.toLowerCase())) return false
       return true
     })
-  }, [checklists, scopeFilter, categoryFilter, assigneeFilter, search, currentUserId])
+  }, [checklists, scopeFilter, categoryFilter, assigneeFilter, search, overdueOnly, dueWindow, currentUserId])
 
   const stats = useMemo(() => {
     const mine = checklists.filter((c) => c.assignedTo?.id === currentUserId)
@@ -157,14 +229,29 @@ export function DashboardClient({ currentUserId }: { currentUserId: string }) {
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { label: 'Active', value: stats.active, color: 'text-accent' },
-          { label: 'Assigned to me', value: stats.mine, color: 'text-ink' },
-          { label: 'Overdue', value: stats.overdue, color: 'text-danger' },
+          { label: 'Active', value: stats.active, color: 'text-accent', on: !overdueOnly && assigneeFilter !== 'me', go: () => { setOverdueOnly(false); setAssigneeFilter('') } },
+          { label: 'Assigned to me', value: stats.mine, color: 'text-ink', on: !overdueOnly && assigneeFilter === 'me', go: () => { setOverdueOnly(false); setAssigneeFilter('me') } },
+          { label: 'Overdue', value: stats.overdue, color: 'text-danger', on: overdueOnly, go: () => { setOverdueOnly(true); setAssigneeFilter('') } },
         ].map((s) => (
-          <div key={s.label} className="rounded-xl border border-border bg-panel p-4">
+          <button
+            key={s.label}
+            type="button"
+            onClick={() => {
+              s.go()
+              setDueWindow('')
+              setScopeFilter('all')
+              setCategoryFilter('')
+              setSearch('')
+            }}
+            aria-pressed={s.on}
+            className={cn(
+              'rounded-xl border bg-panel p-4 text-left transition hover:border-accent',
+              s.on ? 'border-accent' : 'border-border'
+            )}
+          >
             <p className={cn('text-2xl font-bold', s.color)}>{s.value}</p>
-            <p className="text-xs text-muted">{s.label}</p>
-          </div>
+            <p className="text-xs text-muted">{s.label} ↓</p>
+          </button>
         ))}
         <Link
           href="/completed"
@@ -174,6 +261,31 @@ export function DashboardClient({ currentUserId }: { currentUserId: string }) {
           <p className="text-xs text-muted">Completed →</p>
         </Link>
       </div>
+
+      {/* Saved views */}
+      {(views.length > 0 || search || scopeFilter !== 'all' || categoryFilter || assigneeFilter || overdueOnly || dueWindow) && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-muted">Views:</span>
+          {views.map((v) => (
+            <span key={v.name} className="flex items-center rounded-full border border-border bg-panel">
+              <button type="button" onClick={() => applyView(v)} className="px-2.5 py-1 hover:text-accent">
+                {v.name}
+              </button>
+              <button
+                type="button"
+                aria-label={`Delete view ${v.name}`}
+                onClick={() => persistViews(views.filter((x) => x.name !== v.name))}
+                className="pr-2 text-faint hover:text-danger"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          <button type="button" onClick={saveView} className="text-accent hover:underline">
+            + Save current filters
+          </button>
+        </div>
+      )}
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
@@ -224,6 +336,16 @@ export function DashboardClient({ currentUserId }: { currentUserId: string }) {
                 {u.name}
               </option>
             ))}
+        </select>
+
+        <select
+          value={dueWindow}
+          onChange={(e) => setDueWindow(e.target.value as typeof dueWindow)}
+          className="rounded-lg border border-border bg-field px-2 py-2 text-sm"
+        >
+          <option value="">Any due date</option>
+          <option value="today">Due today</option>
+          <option value="week">Due in the next 7 days</option>
         </select>
 
         <button

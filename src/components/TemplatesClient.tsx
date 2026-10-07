@@ -28,7 +28,15 @@ interface DraftItem {
   priority: string
   heading?: boolean
   indent?: number // 1 = subtask of the item above
+  // Conditional display and relative due date (items only, not headings).
+  uid?: string
+  condUid?: string // row this item depends on (must be above it)
+  condResult?: string
+  offset?: string // due this many days before the checklist's due date
 }
+
+let uidCounter = 0
+const newUid = () => `r${Date.now().toString(36)}${uidCounter++}`
 
 // A template pre-filled from an imported file; saved as a new template.
 interface ImportedDraft {
@@ -38,17 +46,34 @@ interface ImportedDraft {
 }
 
 function itemsToRows(
-  items: { text: string; priority: string | null; section: string; indent: number }[]
+  items: {
+    text: string
+    priority: string | null
+    section: string
+    indent: number
+    conditionIndex?: number | null
+    conditionResult?: string
+    dueOffsetDays?: number | null
+  }[]
 ): DraftItem[] {
   const rows: DraftItem[] = []
+  const uids = items.map(() => newUid())
   let current = ''
-  for (const i of items) {
+  items.forEach((i, n) => {
     if (i.section !== current) {
       current = i.section
       if (current) rows.push({ text: current, priority: '', heading: true })
     }
-    rows.push({ text: i.text, priority: i.priority ?? '', indent: i.indent })
-  }
+    rows.push({
+      text: i.text,
+      priority: i.priority ?? '',
+      indent: i.indent,
+      uid: uids[n],
+      condUid: i.conditionIndex != null ? uids[i.conditionIndex] : undefined,
+      condResult: i.conditionResult || undefined,
+      offset: i.dueOffsetDays != null ? String(i.dueOffsetDays) : '',
+    })
+  })
   return rows
 }
 
@@ -448,7 +473,7 @@ function TemplateEditor({
   const [requiresSignOff, setRequiresSignOff] = useState(template?.requiresSignOff ?? false)
   const [items, setItems] = useState<DraftItem[]>(() => {
     const source = template?.items ?? imported?.items.map((i) => ({ ...i, priority: null }))
-    return source ? itemsToRows(source) : [{ text: '', priority: '' }]
+    return source ? itemsToRows(source) : [{ text: '', priority: '', uid: newUid() }]
   })
   const [fields, setFields] = useState<DraftField[]>(
     template?.customFields.map((f) => ({
@@ -469,6 +494,7 @@ function TemplateEditor({
     setBusy(true)
     try {
       let section = ''
+      const uidToIdx = new Map<string, number>()
       const body = {
         title: title.trim(),
         description: description.trim(),
@@ -476,7 +502,15 @@ function TemplateEditor({
         recurrence,
         requiresSignOff,
         items: items.reduce<
-          { text: string; priority: string | null; section: string; indent: number }[]
+          {
+            text: string
+            priority: string | null
+            section: string
+            indent: number
+            conditionIndex: number | null
+            conditionResult: string
+            dueOffsetDays: number | null
+          }[]
         >(
           (acc, row) => {
             const text = row.text.trim()
@@ -484,7 +518,18 @@ function TemplateEditor({
             else if (text) {
               // A subtask needs an item above it in the same section.
               const indent = row.indent && acc.length > 0 && acc[acc.length - 1].section === section ? 1 : 0
-              acc.push({ text, priority: row.priority || null, section, indent })
+              const controller = row.condUid ? uidToIdx.get(row.condUid) : undefined
+              if (row.uid) uidToIdx.set(row.uid, acc.length)
+              const days = row.offset?.trim() ? Math.max(0, Math.min(365, Math.round(Number(row.offset)))) : null
+              acc.push({
+                text,
+                priority: row.priority || null,
+                section,
+                indent,
+                conditionIndex: controller ?? null,
+                conditionResult: controller != null ? row.condResult || 'fail' : '',
+                dueOffsetDays: days != null && Number.isFinite(days) ? days : null,
+              })
             }
             return acc
           },
@@ -602,7 +647,8 @@ function TemplateEditor({
           <label className="mb-1 block text-sm font-medium">Checklist items</label>
           <div className="space-y-2">
             {items.map((item, idx) => (
-              <div key={idx} className={cn('flex gap-2', item.indent && 'ml-8')}>
+              <div key={item.uid ?? idx} className={cn(item.indent && 'ml-8')}>
+              <div className="flex gap-2">
                 <input
                   value={item.text}
                   onChange={(e) =>
@@ -652,12 +698,64 @@ function TemplateEditor({
                   <Trash2 className="h-4 w-4" />
                 </button>
               </div>
+              {!item.heading && (
+                <div className="mt-1 flex flex-wrap items-center gap-2 pl-1 text-xs text-muted">
+                  {items.slice(0, idx).some((r) => !r.heading && r.uid) && (
+                    <>
+                      <span>Only if</span>
+                      <select
+                        value={item.condUid ?? ''}
+                        onChange={(e) =>
+                          setItems(items.map((it, i) => (i === idx ? { ...it, condUid: e.target.value || undefined } : it)))
+                        }
+                        className="max-w-48 rounded border border-border bg-field px-1.5 py-1 text-xs"
+                      >
+                        <option value="">always shown</option>
+                        {items.slice(0, idx).map((r, n) =>
+                          !r.heading && r.uid ? (
+                            <option key={r.uid} value={r.uid}>
+                              {r.text.trim() ? r.text.slice(0, 30) : `Item ${n + 1}`}
+                            </option>
+                          ) : null
+                        )}
+                      </select>
+                      {item.condUid && (
+                        <select
+                          value={item.condResult ?? 'fail'}
+                          onChange={(e) =>
+                            setItems(items.map((it, i) => (i === idx ? { ...it, condResult: e.target.value } : it)))
+                          }
+                          className="rounded border border-border bg-field px-1.5 py-1 text-xs"
+                        >
+                          <option value="pass">is Pass</option>
+                          <option value="fail">is Fail</option>
+                          <option value="na">is N/A</option>
+                        </select>
+                      )}
+                    </>
+                  )}
+                  <span className="ml-auto">Due</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={365}
+                    value={item.offset ?? ''}
+                    onChange={(e) =>
+                      setItems(items.map((it, i) => (i === idx ? { ...it, offset: e.target.value } : it)))
+                    }
+                    placeholder="—"
+                    className="w-14 rounded border border-border bg-field px-1.5 py-1 text-xs"
+                  />
+                  <span>days before list</span>
+                </div>
+              )}
+              </div>
             ))}
           </div>
           <div className="mt-2 flex gap-4">
             <button
               type="button"
-              onClick={() => setItems([...items, { text: '', priority: '' }])}
+              onClick={() => setItems([...items, { text: '', priority: '', uid: newUid() }])}
               className="flex items-center gap-1 text-sm text-accent hover:underline"
             >
               <Plus className="h-4 w-4" /> Add item

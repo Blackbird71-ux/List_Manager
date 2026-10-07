@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { randomBytes } from 'node:crypto'
-import { mkdir, writeFile, unlink } from 'node:fs/promises'
+import { mkdir, writeFile, unlink, copyFile } from 'node:fs/promises'
 
 export const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024 // 10 MB
 
@@ -15,6 +15,13 @@ export async function saveAttachmentFile(buffer: Buffer, originalName: string): 
   const name = `${randomBytes(16).toString('hex')}${ext}`
   await mkdir(attachmentsDir(), { recursive: true })
   await writeFile(path.join(attachmentsDir(), name), buffer)
+  return name
+}
+
+/** Duplicate a stored file under a fresh random name, so deleting one copy never removes the other. */
+export async function copyAttachmentFile(storagePath: string): Promise<string> {
+  const name = `${randomBytes(16).toString('hex')}${path.extname(storagePath)}`
+  await copyFile(attachmentFilePath(storagePath), path.join(attachmentsDir(), name))
   return name
 }
 
