@@ -338,6 +338,14 @@ function baseTopicsFor(pathname: string): { heading: string; topics: HelpTopic[]
           ],
         },
         {
+          title: 'Google Drive backup (admins)',
+          points: [
+            'Every night at 03:30 the database and any new uploaded files are copied to a "Lists Manager Backups" folder in your Google Drive. The newest 30 database copies are kept.',
+            'Set up once: create a Web-application OAuth client in Google Cloud Console, add the redirect URI shown in the section, save the client ID and secret here, then click Connect Google Drive (from the https address).',
+            '"Back up now" runs a backup immediately and shows the result. Disconnecting leaves existing Drive copies in place.',
+          ],
+        },
+        {
           title: 'Remote access (admins)',
           points: [
             'The Remote access section manages the Cloudflare tunnel that makes the app reachable from outside the network.',

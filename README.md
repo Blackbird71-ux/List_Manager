@@ -45,6 +45,8 @@ due date advanced by the recurrence interval.
 - **Context-aware help** — the **?** button in the header opens help for the page
   you are on, adapts to your role, and on a checklist leads with what applies to it
   right now (awaiting sign-off, completed, recurring, overdue).
+- **Google Drive backup** — nightly copy of the database and uploaded files to
+  the admin's Google Drive, set up under Settings (see below).
 - **Search** — Ctrl+K / ⌘K searches checklists and items from anywhere.
 
 ## Checklist page layout
@@ -120,14 +122,13 @@ credentials JSON) — the tunnel starts automatically if config.yml exists.
 3. On the NAS: `sudo sh /volume1/docker/listsmanager/deploy-nas.sh`. It replaces
    the container, applies pending migrations and prints the startup logs.
 
-Things to check before a release:
+Migrations and backups are automatic — there is nothing to run by hand. On every
+start the container backs up the DB and then applies pending migrations. Afterwards,
+check `docker logs listsmanager-app` for the migration and startup lines.
 
-- `deploy-build.bat` overwrites the NAS `.env.local` with your local one, so make
-  sure local values (e.g. `AUTH_SECRET`) match what the NAS needs. Values must not
-  be quoted — Docker's `--env-file` keeps the quotes.
-- If the release adds a migration, take a copy of `/data/listsmanager.db` first
-  (the container also makes a pre-deploy backup, but a manual one is cheap).
-- Check `docker logs listsmanager-app` for the migration and startup lines.
+`deploy-build.bat` copies your local `.env.local` to the NAS, replacing the one
+there. Keep the two identical, and don't quote values (Docker's `--env-file` keeps
+the quotes).
 
 **First-time / manual setup** (from the repo directory on the NAS):
 
@@ -143,9 +144,31 @@ docker compose logs -f            # watch migrations + startup
   request host, and an https `AUTH_URL` breaks login over plain-http LAN.
 - Migrations run automatically at container startup (`prisma migrate deploy`),
   with a pre-deploy DB backup kept in `/data/backups` (last 10).
-- A cron job inside the container backs up the DB daily at 03:00 (last 14 kept)
-  and sends the overdue digest at 07:00.
+- A cron job inside the container backs up the DB daily at 03:00 (last 14 kept,
+  local to the NAS), copies it to Google Drive at 03:30 (see below) and sends the
+  overdue digest at 07:00.
 - Uploaded files (item attachments and supporting documents) are stored under
-  `/data/attachments`. They are not part of the DB backups, so include that folder
-  in any NAS backup.
+  `/data/attachments`. The local DB backups don't include them, but the Google
+  Drive backup does.
+
+### Google Drive backup
+
+Nightly at 03:30 the app uploads a gzipped DB snapshot (newest 30 kept) and any
+attachments not yet on Drive to a "Lists Manager Backups" folder (`database/` and
+`attachments/`). Files deleted in the app are not deleted from Drive. Nothing goes in
+`.env.local`; credentials are stored in the app database.
+
+One-time setup, by a primary-organisation admin:
+
+1. In Google Cloud Console create an OAuth client ID (type *Web application*) and
+   enable the Google Drive API. Add the authorised redirect URI
+   `https://lists.liddleapps.com/api/settings/drive-backup/callback`.
+2. Open the app via the **https** address, go to Settings → Google Drive backup,
+   enter the client ID and secret and save.
+3. Click **Connect Google Drive** and approve. Use **Back up now** to test.
+
+The app uses the `drive.file` scope, so it only sees folders it created itself.
+Reconnecting creates a fresh "Lists Manager Backups" folder rather than reusing the
+old one. Status of the last run is shown in Settings and logged to
+`/data/backups/drive-backup.log`.
 - Health check: `GET /api/health`.

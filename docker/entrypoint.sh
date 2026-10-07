@@ -134,10 +134,11 @@ export DIGEST_SECRET
   echo "0 3 * * * su-exec nextjs:nodejs /app/scripts/backup-db.sh /data/backups >> /data/backups/cron.log 2>&1"
   echo "*/5 * * * * wget -q -O- --header \"x-digest-secret: $DIGEST_SECRET\" http://127.0.0.1:3000/api/scheduler/reminders >> /data/backups/reminders.log 2>&1"
   echo "0 6 * * * wget -q -O- --header \"x-digest-secret: $DIGEST_SECRET\" http://127.0.0.1:3000/api/scheduler/recurrence >> /data/backups/scheduler.log 2>&1"
+  echo "30 3 * * * wget -q -O- --header \"x-digest-secret: $DIGEST_SECRET\" http://127.0.0.1:3000/api/scheduler/drive-backup >> /data/backups/drive-backup.log 2>&1"
   echo "0 7 * * * wget -q -O- --header \"x-digest-secret: $DIGEST_SECRET\" http://127.0.0.1:3000/api/digest/overdue >> /data/backups/digest.log 2>&1"
 } > /etc/crontabs/root
 crond -b -l 2
-echo "   ok: cron daemon started (backup 03:00, reminders every 5min, recurrence spawn 06:00, overdue digest 07:00)"
+echo "   ok: cron daemon started (backup 03:00, Drive backup 03:30, reminders every 5min, recurrence spawn 06:00, overdue digest 07:00)"
 
 # ---------------------------------------------------------------------------
 # 6. Optional: Cloudflare tunnel

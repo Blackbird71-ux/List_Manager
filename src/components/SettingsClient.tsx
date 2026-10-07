@@ -5,6 +5,7 @@ import { Check, Copy, Moon, Palette, RefreshCw, Sun } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { TunnelSection } from '@/components/TunnelSection'
 import { EmailSection } from '@/components/EmailSection'
+import { DriveBackupSection } from '@/components/DriveBackupSection'
 import { PushSection } from '@/components/PushSection'
 import { EmailRemindersSection } from '@/components/EmailRemindersSection'
 
@@ -91,6 +92,7 @@ export function SettingsClient({
       {/* Instance-wide settings — only primary-organisation admins */}
       {isPrimaryAdmin && <RegistrationSection />}
       {isPrimaryAdmin && <EmailSection />}
+      {isPrimaryAdmin && <DriveBackupSection />}
       {isPrimaryAdmin && <TunnelSection />}
     </div>
   )

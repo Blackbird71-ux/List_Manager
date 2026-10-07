@@ -5,7 +5,7 @@ import { mkdir, writeFile, unlink } from 'node:fs/promises'
 export const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024 // 10 MB
 
 // Bytes live outside the DB: /data/attachments in the container, ./data locally.
-function attachmentsDir(): string {
+export function attachmentsDir(): string {
   return path.join(process.env.DATA_DIR ?? './data', 'attachments')
 }
 
