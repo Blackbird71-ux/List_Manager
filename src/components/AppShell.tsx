@@ -60,7 +60,7 @@ export function AppShell({ user, children }: AppShellProps) {
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-40 border-b border-border bg-panel/90 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-[1800px] items-center gap-4 px-4 lg:px-8">
+        <div className="mx-auto flex h-14 max-w-[2400px] items-center gap-4 px-4 lg:px-8">
           <Link href="/" className="flex items-center gap-2 font-semibold text-ink">
             <ClipboardList className="h-5 w-5 text-accent" />
             Lists Manager
@@ -122,7 +122,7 @@ export function AppShell({ user, children }: AppShellProps) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1800px] px-4 py-6 lg:px-8">{children}</main>
+      <main className="mx-auto max-w-[2400px] px-4 py-6 lg:px-8">{children}</main>
 
       <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>

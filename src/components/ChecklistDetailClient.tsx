@@ -53,6 +53,31 @@ export function ChecklistDetailClient({
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const wide = useWideScreen()
+  const [sideWidth, setSideWidth] = useState(480)
+  useEffect(() => {
+    try {
+      const saved = Number(localStorage.getItem(SIDE_WIDTH_KEY))
+      if (saved >= SIDE_MIN && saved <= SIDE_MAX) setSideWidth(saved)
+    } catch {}
+  }, [])
+
+  function startResize(e: React.PointerEvent<HTMLDivElement>) {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = sideWidth
+    let latest = startWidth
+    const move = (ev: PointerEvent) => {
+      latest = Math.min(SIDE_MAX, Math.max(SIDE_MIN, startWidth + (startX - ev.clientX)))
+      setSideWidth(latest)
+    }
+    const up = () => {
+      window.removeEventListener("pointermove", move)
+      window.removeEventListener("pointerup", up)
+      try { localStorage.setItem(SIDE_WIDTH_KEY, String(latest)) } catch {}
+    }
+    window.addEventListener("pointermove", move)
+    window.addEventListener("pointerup", up)
+  }
   const dragIdRef = useRef<string | null>(null)
   dragIdRef.current = dragId
 
@@ -234,8 +259,148 @@ export function ChecklistDetailClient({
     currentUserRole === 'manager' ||
     checklist.createdBy.id === currentUserId
 
+  // These sit under the header on narrow screens and in the side column on wide ones.
+  const sharingBlock = canManage ? (
+    <SharingPanel
+      checklist={checklist}
+      users={users}
+      currentUserId={currentUserId}
+      onSave={patchChecklist}
+    />
+  ) : null
+  const docsBlock = (
+    <SupportingDocuments
+      checklistId={checklistId}
+      attachments={checklist.attachments ?? []}
+      onChanged={load}
+    />
+  )
+  const commentsBlock = (
+    <CommentsActivityPanel checklistId={checklistId} users={users} refreshTick={pollTick} />
+  )
+
+  // Due date, reminder, assignee, priority and custom fields.
+  const detailsBlock = (
+    <div className="space-y-4">
+        {/* Meta controls */}
+        <div className={cn("grid gap-3", wide ? "grid-cols-2" : "sm:grid-cols-4")}>
+          <label className="block text-sm">
+            <span className="mb-1 flex items-center gap-1 text-xs font-medium text-muted">
+              <Calendar className="h-3 w-3" /> Due date
+            </span>
+            <input
+              type="date"
+              value={checklist.dueDate ? checklist.dueDate.slice(0, 10) : ''}
+              onChange={(e) =>
+                patchChecklist({
+                  dueDate: e.target.value
+                    ? new Date(`${e.target.value}T00:00:00`).toISOString()
+                    : null,
+                })
+              }
+              className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 flex items-center gap-1 text-xs font-medium text-muted">
+              <Bell className="h-3 w-3" /> Reminder
+            </span>
+            <select
+              value={checklist.reminderOffsetHours ?? ''}
+              onChange={(e) =>
+                patchChecklist({
+                  reminderOffsetHours: e.target.value ? Number(e.target.value) : null,
+                })
+              }
+              className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
+              disabled={!checklist.dueDate}
+              title="Set reminder offset (requires a due date)"
+            >
+              <option value="">No reminder</option>
+              <option value={1}>1 hour before</option>
+              <option value={2}>2 hours before</option>
+              <option value={6}>6 hours before</option>
+              <option value={12}>12 hours before</option>
+              <option value={24}>1 day before</option>
+              <option value={48}>2 days before</option>
+              <option value={72}>3 days before</option>
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 flex items-center gap-1 text-xs font-medium text-muted">
+              <UserIcon className="h-3 w-3" /> Assigned to
+            </span>
+            <select
+              value={checklist.assignedTo?.id ?? ''}
+              onChange={(e) => patchChecklist({ assignedToId: e.target.value || null })}
+              className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
+            >
+              <option value="">Unassigned</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-muted">Priority</span>
+            <select
+              value={checklist.priority}
+              onChange={(e) => patchChecklist({ priority: e.target.value })}
+              className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
+            >
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </label>
+        </div>
+
+        {/* Custom fields */}
+        {checklist.fieldValues.length > 0 && (
+          <div className={cn("grid gap-3 border-t border-border-soft pt-4", wide ? "grid-cols-2" : "sm:grid-cols-3 xl:grid-cols-5")}>
+            {checklist.fieldValues.map((fv) => (
+              <label key={fv.id} className="block text-sm">
+                <span className="mb-1 block text-xs font-medium text-muted">{fv.name}</span>
+                {fv.type === 'user' ? (
+                  <select
+                    value={fv.value}
+                    onChange={(e) =>
+                      patchChecklist({ fieldValues: [{ id: fv.id, value: e.target.value }] })
+                    }
+                    className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
+                  >
+                    <option value="">—</option>
+                    {users.map((u) => (
+                      <option key={u.id} value={u.name}>
+                        {u.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    defaultValue={fv.value}
+                    onBlur={(e) => {
+                      if (e.target.value !== fv.value) {
+                        patchChecklist({ fieldValues: [{ id: fv.id, value: e.target.value }] })
+                      }
+                    }}
+                    className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
+                  />
+                )}
+              </label>
+            ))}
+          </div>
+        )}
+    </div>
+  )
+
   return (
-    <div className={cn("mx-auto", wide ? "grid max-w-none grid-cols-[minmax(0,1fr)_26rem] items-start gap-6" : "max-w-5xl")}>
+    <div
+      className={cn("mx-auto", wide ? "grid max-w-none items-start" : "max-w-5xl")}
+      style={wide ? { gridTemplateColumns: `minmax(0,1fr) 16px ${sideWidth}px` } : undefined}
+    >
     <div className="min-w-0 space-y-4">
       <Link href="/" className="flex items-center gap-1 text-sm text-muted hover:text-ink">
         <ArrowLeft className="h-4 w-4" /> All checklists
@@ -389,117 +554,7 @@ export function ChecklistDetailClient({
           </div>
         </div>
 
-        {/* Meta controls */}
-        <div className="mt-4 grid gap-3 sm:grid-cols-4">
-          <label className="block text-sm">
-            <span className="mb-1 flex items-center gap-1 text-xs font-medium text-muted">
-              <Calendar className="h-3 w-3" /> Due date
-            </span>
-            <input
-              type="date"
-              value={checklist.dueDate ? checklist.dueDate.slice(0, 10) : ''}
-              onChange={(e) =>
-                patchChecklist({
-                  dueDate: e.target.value
-                    ? new Date(`${e.target.value}T00:00:00`).toISOString()
-                    : null,
-                })
-              }
-              className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 flex items-center gap-1 text-xs font-medium text-muted">
-              <Bell className="h-3 w-3" /> Reminder
-            </span>
-            <select
-              value={checklist.reminderOffsetHours ?? ''}
-              onChange={(e) =>
-                patchChecklist({
-                  reminderOffsetHours: e.target.value ? Number(e.target.value) : null,
-                })
-              }
-              className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
-              disabled={!checklist.dueDate}
-              title="Set reminder offset (requires a due date)"
-            >
-              <option value="">No reminder</option>
-              <option value={1}>1 hour before</option>
-              <option value={2}>2 hours before</option>
-              <option value={6}>6 hours before</option>
-              <option value={12}>12 hours before</option>
-              <option value={24}>1 day before</option>
-              <option value={48}>2 days before</option>
-              <option value={72}>3 days before</option>
-            </select>
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 flex items-center gap-1 text-xs font-medium text-muted">
-              <UserIcon className="h-3 w-3" /> Assigned to
-            </span>
-            <select
-              value={checklist.assignedTo?.id ?? ''}
-              onChange={(e) => patchChecklist({ assignedToId: e.target.value || null })}
-              className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
-            >
-              <option value="">Unassigned</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-xs font-medium text-muted">Priority</span>
-            <select
-              value={checklist.priority}
-              onChange={(e) => patchChecklist({ priority: e.target.value })}
-              className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
-            >
-              <option value="low">Low</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select>
-          </label>
-        </div>
-
-        {/* Custom fields */}
-        {checklist.fieldValues.length > 0 && (
-          <div className="mt-4 grid gap-3 border-t border-border-soft pt-4 sm:grid-cols-3">
-            {checklist.fieldValues.map((fv) => (
-              <label key={fv.id} className="block text-sm">
-                <span className="mb-1 block text-xs font-medium text-muted">{fv.name}</span>
-                {fv.type === 'user' ? (
-                  <select
-                    value={fv.value}
-                    onChange={(e) =>
-                      patchChecklist({ fieldValues: [{ id: fv.id, value: e.target.value }] })
-                    }
-                    className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
-                  >
-                    <option value="">—</option>
-                    {users.map((u) => (
-                      <option key={u.id} value={u.name}>
-                        {u.name}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    defaultValue={fv.value}
-                    onBlur={(e) => {
-                      if (e.target.value !== fv.value) {
-                        patchChecklist({ fieldValues: [{ id: fv.id, value: e.target.value }] })
-                      }
-                    }}
-                    className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
-                  />
-                )}
-              </label>
-            ))}
-          </div>
-        )}
+        {!wide && <div className="mt-4">{detailsBlock}</div>}
 
         {total > 0 && (
           <div className="mt-4">
@@ -519,21 +574,8 @@ export function ChecklistDetailClient({
         )}
       </div>
 
-      {/* Visibility & sharing (creator, managers, admins) */}
-      {canManage && (
-        <SharingPanel
-          checklist={checklist}
-          users={users}
-          currentUserId={currentUserId}
-          onSave={patchChecklist}
-        />
-      )}
-
-      <SupportingDocuments
-        checklistId={checklistId}
-        attachments={checklist.attachments ?? []}
-        onChanged={load}
-      />
+      {!wide && sharingBlock}
+      {!wide && docsBlock}
 
       {/* Items */}
       <div className="space-y-1 md:space-y-1">
@@ -593,11 +635,22 @@ export function ChecklistDetailClient({
         </form>
       </div>
 
-      <CommentsActivityPanel checklistId={checklistId} users={users} refreshTick={pollTick} />
+      {!wide && commentsBlock}
     </div>
 
     {wide && (
-      <aside className="sticky top-20 max-h-[calc(100vh-6rem)] overflow-y-auto rounded-2xl border border-border bg-panel p-4">
+      <div
+        onPointerDown={startResize}
+        onDoubleClick={() => { setSideWidth(480); try { localStorage.removeItem(SIDE_WIDTH_KEY) } catch {} }}
+        className="group sticky top-20 mx-auto h-[calc(100vh-6rem)] w-4 cursor-col-resize touch-none"
+        title="Drag to resize · double-click to reset"
+      >
+        <div className="mx-auto h-full w-0.5 rounded bg-border group-hover:bg-accent" />
+      </div>
+    )}
+    {wide && (
+      <aside className="sticky top-20 max-h-[calc(100vh-6rem)] space-y-4 overflow-y-auto pr-1">
+        <div className="rounded-2xl border border-border bg-panel p-4">
         {selectedItem ? (
           <>
             <div className="mb-3 flex items-start gap-2">
@@ -633,15 +686,24 @@ export function ChecklistDetailClient({
             />
           </>
         ) : (
-          <p className="py-8 text-center text-sm text-faint">
+          <p className="py-2 text-center text-sm text-faint">
             Select an item to see its notes, result, assignee and attachments.
           </p>
         )}
+        </div>
+        <div className="rounded-2xl border border-border bg-panel p-4">{detailsBlock}</div>
+        {sharingBlock}
+        {docsBlock}
+        {commentsBlock}
       </aside>
     )}
     </div>
   )
 }
+
+const SIDE_WIDTH_KEY = "lm-side-width"
+const SIDE_MIN = 320
+const SIDE_MAX = 900
 
 // True on screens wide enough to show item details in a side panel.
 function useWideScreen() {
@@ -1504,7 +1566,7 @@ function ItemRow({
         dragging && 'opacity-50'
       )}
     >
-      <div className="flex items-center gap-3 px-3 py-3 md:py-1.5">
+      <div className="flex items-center gap-3 px-3 py-3 md:py-1">
         <span
           onMouseDown={() => setArmed(true)}
           onMouseUp={() => setArmed(false)}
