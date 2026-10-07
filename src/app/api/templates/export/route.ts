@@ -40,6 +40,7 @@ export async function GET() {
       items: t.items.map((i) => ({
         text: i.text,
         priority: i.priority,
+        section: i.section,
         sortOrder: i.sortOrder,
       })),
       customFields: t.customFields.map((f) => ({

@@ -134,6 +134,7 @@ export async function createChecklistFromTemplate(params: {
         create: template.items.map((item, idx) => ({
           text: item.text,
           priority: item.priority,
+          section: item.section,
           sortOrder: idx,
         })),
       },
@@ -176,7 +177,7 @@ interface CloneSource {
   createdById: string
   assignedToId: string | null
   reminderOffsetHours: number | null
-  items: { text: string; priority: string | null; assignedToId: string | null }[]
+  items: { text: string; priority: string | null; section: string; assignedToId: string | null }[]
 }
 
 /**
@@ -210,6 +211,7 @@ async function cloneForNextRun(
         create: source.items.map((item, idx) => ({
           text: item.text,
           priority: item.priority,
+          section: item.section,
           sortOrder: idx,
           assignedToId: item.assignedToId,
         })),

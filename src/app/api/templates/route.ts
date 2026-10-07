@@ -34,6 +34,7 @@ export async function GET(request: Request) {
 const itemSchema = z.object({
   text: z.string().trim().min(1).max(500),
   priority: z.enum(['low', 'medium', 'high']).nullish(),
+  section: z.string().trim().max(200).default(''),
 })
 
 const fieldSchema = z.object({
@@ -77,6 +78,7 @@ export async function POST(request: Request) {
         create: items.map((item, idx) => ({
           text: item.text,
           priority: item.priority ?? null,
+          section: item.section,
           sortOrder: idx,
         })),
       },

@@ -7,6 +7,7 @@ import { RECURRENCE_OPTIONS } from '@/lib/recurrence'
 const itemSchema = z.object({
   text: z.string().trim().min(1).max(500),
   priority: z.enum(['low', 'medium', 'high']).nullish(),
+  section: z.string().trim().max(200).default(''),
   sortOrder: z.number().int().min(0).default(0),
 })
 
@@ -64,6 +65,7 @@ export async function POST(request: Request) {
               .map((item, idx) => ({
                 text: item.text,
                 priority: item.priority ?? null,
+                section: item.section,
                 sortOrder: idx,
               })),
           },

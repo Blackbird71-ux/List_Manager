@@ -19,9 +19,34 @@ import { cn } from '@/lib/utils'
 
 const RECURRENCES = ['none', 'daily', 'weekly', 'fortnightly', 'monthly', 'quarterly', 'yearly']
 
+// A row in the editor: a checklist item, or a section heading that applies to
+// the items below it (until the next heading).
 interface DraftItem {
   text: string
   priority: string
+  heading?: boolean
+}
+
+// A template pre-filled from an imported file; saved as a new template.
+interface ImportedDraft {
+  title: string
+  items: { text: string; section: string }[]
+  fields: string[]
+}
+
+function itemsToRows(
+  items: { text: string; priority: string | null; section: string }[]
+): DraftItem[] {
+  const rows: DraftItem[] = []
+  let current = ''
+  for (const i of items) {
+    if (i.section !== current) {
+      current = i.section
+      if (current) rows.push({ text: current, priority: '', heading: true })
+    }
+    rows.push({ text: i.text, priority: i.priority ?? '' })
+  }
+  return rows
 }
 
 interface DraftField {
@@ -39,6 +64,7 @@ export function TemplatesClient() {
   const [starting, setStarting] = useState<ApiTemplate | null>(null)
   const [importError, setImportError] = useState('')
   const [importing, setImporting] = useState(false)
+  const [imported, setImported] = useState<ImportedDraft | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
@@ -85,6 +111,18 @@ export function TemplatesClient() {
     setImportError('')
     setImporting(true)
     try {
+      if (!file.name.toLowerCase().endsWith('.json')) {
+        const form = new FormData()
+        form.append('file', file)
+        const res = await fetch('/api/templates/import/parse', { method: 'POST', body: form })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          setImportError(data.error ?? 'Could not read that file')
+          return
+        }
+        setImported(data)
+        return
+      }
       let body: unknown
       try {
         body = JSON.parse(await file.text())
@@ -142,7 +180,7 @@ export function TemplatesClient() {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".json,application/json"
+          accept=".json,.txt,.md,.csv,.xlsx"
           className="hidden"
           onChange={(e) => {
             const file = e.target.files?.[0]
@@ -232,12 +270,17 @@ export function TemplatesClient() {
         </div>
       )}
 
-      {editing && (
+      {(editing || imported) && (
         <TemplateEditor
-          template={editing === 'new' ? null : editing}
-          onClose={() => setEditing(null)}
+          template={editing && editing !== 'new' ? editing : null}
+          imported={imported}
+          onClose={() => {
+            setEditing(null)
+            setImported(null)
+          }}
           onSaved={() => {
             setEditing(null)
+            setImported(null)
             load()
           }}
         />
@@ -386,29 +429,32 @@ function StartChecklistModal({
 
 function TemplateEditor({
   template,
+  imported,
   onClose,
   onSaved,
 }: {
   template: ApiTemplate | null
+  imported: ImportedDraft | null
   onClose: () => void
   onSaved: () => void
 }) {
-  const [title, setTitle] = useState(template?.title ?? '')
+  const [title, setTitle] = useState(template?.title ?? imported?.title ?? '')
   const [description, setDescription] = useState(template?.description ?? '')
   const [category, setCategory] = useState(template?.category ?? 'general')
   const [recurrence, setRecurrence] = useState(template?.recurrence ?? 'none')
-  const [items, setItems] = useState<DraftItem[]>(
-    template?.items.map((i) => ({ text: i.text, priority: i.priority ?? '' })) ?? [
-      { text: '', priority: '' },
-    ]
-  )
+  const [items, setItems] = useState<DraftItem[]>(() => {
+    const source = template?.items ?? imported?.items.map((i) => ({ ...i, priority: null }))
+    return source ? itemsToRows(source) : [{ text: '', priority: '' }]
+  })
   const [fields, setFields] = useState<DraftField[]>(
     template?.customFields.map((f) => ({
       name: f.name,
       type: f.type,
       options: (JSON.parse(f.options) as string[]).join(', '),
       required: f.required,
-    })) ?? []
+    })) ??
+      imported?.fields.map((name) => ({ name, type: 'text', options: '', required: false })) ??
+      []
   )
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -418,14 +464,21 @@ function TemplateEditor({
     setError('')
     setBusy(true)
     try {
+      let section = ''
       const body = {
         title: title.trim(),
         description: description.trim(),
         category: category.trim() || 'general',
         recurrence,
-        items: items
-          .filter((i) => i.text.trim())
-          .map((i) => ({ text: i.text.trim(), priority: i.priority || null })),
+        items: items.reduce<{ text: string; priority: string | null; section: string }[]>(
+          (acc, row) => {
+            const text = row.text.trim()
+            if (row.heading) section = text
+            else if (text) acc.push({ text, priority: row.priority || null, section })
+            return acc
+          },
+          []
+        ),
         customFields: fields
           .filter((f) => f.name.trim())
           .map((f) => ({
@@ -460,7 +513,15 @@ function TemplateEditor({
         onSubmit={submit}
         className="my-8 w-full max-w-2xl space-y-4 rounded-2xl border border-border bg-panel p-5 shadow-xl"
       >
-        <h2 className="text-lg font-semibold">{template ? 'Edit template' : 'New template'}</h2>
+        <h2 className="text-lg font-semibold">
+          {template ? 'Edit template' : imported ? 'Review imported template' : 'New template'}
+        </h2>
+        {imported && (
+          <p className="text-sm text-muted">
+            {imported.items.length} items read from the file. Check them over, then save — nothing
+            is created until you do.
+          </p>
+        )}
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
@@ -521,23 +582,28 @@ function TemplateEditor({
                   onChange={(e) =>
                     setItems(items.map((it, i) => (i === idx ? { ...it, text: e.target.value } : it)))
                   }
-                  placeholder={`Item ${idx + 1}`}
-                  className="flex-1 rounded-lg border border-border bg-field px-3 py-2 text-sm"
+                  placeholder={item.heading ? 'Section heading' : `Item ${idx + 1}`}
+                  className={cn(
+                    'flex-1 rounded-lg border border-border bg-field px-3 py-2 text-sm',
+                    item.heading && 'bg-hover font-semibold'
+                  )}
                 />
-                <select
-                  value={item.priority}
-                  onChange={(e) =>
-                    setItems(
-                      items.map((it, i) => (i === idx ? { ...it, priority: e.target.value } : it))
-                    )
-                  }
-                  className="w-28 rounded-lg border border-border bg-field px-2 py-2 text-sm"
-                >
-                  <option value="">No priority</option>
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                </select>
+                {!item.heading && (
+                  <select
+                    value={item.priority}
+                    onChange={(e) =>
+                      setItems(
+                        items.map((it, i) => (i === idx ? { ...it, priority: e.target.value } : it))
+                      )
+                    }
+                    className="w-28 rounded-lg border border-border bg-field px-2 py-2 text-sm"
+                  >
+                    <option value="">No priority</option>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                )}
                 <button
                   type="button"
                   onClick={() => setItems(items.filter((_, i) => i !== idx))}
@@ -548,13 +614,22 @@ function TemplateEditor({
               </div>
             ))}
           </div>
-          <button
-            type="button"
-            onClick={() => setItems([...items, { text: '', priority: '' }])}
-            className="mt-2 flex items-center gap-1 text-sm text-accent hover:underline"
-          >
-            <Plus className="h-4 w-4" /> Add item
-          </button>
+          <div className="mt-2 flex gap-4">
+            <button
+              type="button"
+              onClick={() => setItems([...items, { text: '', priority: '' }])}
+              className="flex items-center gap-1 text-sm text-accent hover:underline"
+            >
+              <Plus className="h-4 w-4" /> Add item
+            </button>
+            <button
+              type="button"
+              onClick={() => setItems([...items, { text: '', priority: '', heading: true }])}
+              className="flex items-center gap-1 text-sm text-accent hover:underline"
+            >
+              <Plus className="h-4 w-4" /> Add section
+            </button>
+          </div>
         </div>
 
         {/* Custom fields */}

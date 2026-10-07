@@ -427,19 +427,23 @@ export function ChecklistDetailClient({
 
       {/* Items */}
       <div className="space-y-2">
-        {checklist.items.map((item) => (
-          <ItemRow
-            key={item.id}
-            checklistId={checklistId}
-            item={item}
-            users={users}
-            onToggle={() => toggleItem(item)}
-            onChanged={load}
-            dragging={dragId === item.id}
-            onDragStart={() => setDragId(item.id)}
-            onDragOver={(e) => dragOverItem(e, item.id)}
-            onDragEnd={dropItem}
-          />
+        {checklist.items.map((item, idx) => (
+          <div key={item.id} className="space-y-2">
+            {item.section && item.section !== (checklist.items[idx - 1]?.section ?? '') && (
+              <h3 className="pt-2 text-sm font-semibold text-muted">{item.section}</h3>
+            )}
+            <ItemRow
+              checklistId={checklistId}
+              item={item}
+              users={users}
+              onToggle={() => toggleItem(item)}
+              onChanged={load}
+              dragging={dragId === item.id}
+              onDragStart={() => setDragId(item.id)}
+              onDragOver={(e) => dragOverItem(e, item.id)}
+              onDragEnd={dropItem}
+            />
+          </div>
         ))}
 
         <form onSubmit={addItem} className="flex gap-2">
