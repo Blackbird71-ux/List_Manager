@@ -50,6 +50,7 @@ export interface ApiTemplate {
   recurrence: string
   archived: boolean
   requiresSignOff: boolean
+  version: number
   createdAt: string
   updatedAt: string
   items: ApiTemplateItem[]

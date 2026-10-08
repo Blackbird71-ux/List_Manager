@@ -37,6 +37,8 @@ due date advanced by the recurrence interval.
 - **Photo capture** — on a phone, take a photo straight into an item.
 - **Escalation** — admins and managers are notified when a list has been overdue
   for a set number of days (Settings, primary admin).
+- **Template history** — every edit to a template's items or fields is saved as a
+  version; view or restore any earlier one (restoring saves it as a new version).
 - **Personal digest** — at 07:30 each person with email reminders on gets one email
   listing their assigned lists and items that are overdue or due in the next 7 days
   (nothing is sent on a clear day).

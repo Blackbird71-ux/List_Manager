@@ -6,6 +6,11 @@ export function canSeeAllChecklists(role: string) {
   return role === 'admin' || role === 'manager'
 }
 
+// Templates can be changed or deleted by their creator, managers and admins.
+export function canEditTemplate(user: { id: string; role: string }, createdById: string) {
+  return canSeeAllChecklists(user.role) || user.id === createdById
+}
+
 /**
  * Instance-level settings (SMTP, remote-access tunnel) are shared by every
  * organisation on this install, so only admins of the primary organisation

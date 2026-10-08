@@ -9,7 +9,7 @@ export default async function TemplatesPage() {
 
   return (
     <AppShell user={{ name: session.user.name, role: session.user.role }}>
-      <TemplatesClient />
+      <TemplatesClient userId={session.user.id} role={session.user.role} />
     </AppShell>
   )
 }

@@ -6,6 +6,7 @@ import {
   Archive,
   ArchiveRestore,
   Download,
+  History,
   Indent,
   Outdent,
   Pencil,
@@ -84,12 +85,15 @@ interface DraftField {
   required: boolean
 }
 
-export function TemplatesClient() {
+export function TemplatesClient({ userId, role }: { userId: string; role: string }) {
+  const canEdit = (t: ApiTemplate) =>
+    role === 'admin' || role === 'manager' || t.createdBy.id === userId
   const [templates, setTemplates] = useState<ApiTemplate[]>([])
   const [loading, setLoading] = useState(true)
   const [showArchived, setShowArchived] = useState(false)
   const [editing, setEditing] = useState<ApiTemplate | 'new' | null>(null)
   const [starting, setStarting] = useState<ApiTemplate | null>(null)
+  const [historyFor, setHistoryFor] = useState<ApiTemplate | null>(null)
   const [importError, setImportError] = useState('')
   const [importing, setImporting] = useState(false)
   const [imported, setImported] = useState<ImportedDraft | null>(null)
@@ -243,31 +247,44 @@ export function TemplatesClient() {
               <div className="flex items-start justify-between gap-2">
                 <h3 className="font-semibold">{t.title}</h3>
                 <div className="flex shrink-0 gap-1">
+                  {canEdit(t) && (
+                    <button
+                      onClick={() => setEditing(t)}
+                      className="rounded p-1.5 text-muted hover:bg-hover"
+                      title="Edit"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                  )}
                   <button
-                    onClick={() => setEditing(t)}
+                    onClick={() => setHistoryFor(t)}
                     className="rounded p-1.5 text-muted hover:bg-hover"
-                    title="Edit"
+                    title="Version history"
                   >
-                    <Pencil className="h-4 w-4" />
+                    <History className="h-4 w-4" />
                   </button>
-                  <button
-                    onClick={() => toggleArchive(t)}
-                    className="rounded p-1.5 text-muted hover:bg-hover"
-                    title={t.archived ? 'Restore' : 'Archive'}
-                  >
-                    {t.archived ? (
-                      <ArchiveRestore className="h-4 w-4" />
-                    ) : (
-                      <Archive className="h-4 w-4" />
-                    )}
-                  </button>
-                  <button
-                    onClick={() => remove(t)}
-                    className="rounded p-1.5 text-danger/50 hover:bg-danger-soft hover:text-danger"
-                    title="Delete"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  {canEdit(t) && (
+                    <button
+                      onClick={() => toggleArchive(t)}
+                      className="rounded p-1.5 text-muted hover:bg-hover"
+                      title={t.archived ? 'Restore' : 'Archive'}
+                    >
+                      {t.archived ? (
+                        <ArchiveRestore className="h-4 w-4" />
+                      ) : (
+                        <Archive className="h-4 w-4" />
+                      )}
+                    </button>
+                  )}
+                  {canEdit(t) && (
+                    <button
+                      onClick={() => remove(t)}
+                      className="rounded p-1.5 text-danger/50 hover:bg-danger-soft hover:text-danger"
+                      title="Delete"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -315,6 +332,17 @@ export function TemplatesClient() {
       )}
 
       {starting && <StartChecklistModal template={starting} onClose={() => setStarting(null)} />}
+
+      {historyFor && (
+        <TemplateHistoryModal
+          template={historyFor}
+          onClose={() => setHistoryFor(null)}
+          onRestored={() => {
+            setHistoryFor(null)
+            load()
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -453,6 +481,143 @@ function StartChecklistModal({
       </form>
     </div>
   )
+}
+
+interface VersionRow {
+  version: number;
+  savedByName: string;
+  createdAt: string;
+  snapshot: {
+    items: { text: string; section: string; indent: number }[];
+    customFields: { name: string }[];
+  };
+}
+
+// Earlier saved versions of a template. Restoring one saves it as a new version,
+// so nothing is lost and lists already running are untouched.
+function TemplateHistoryModal({
+  template,
+  onClose,
+  onRestored,
+}: {
+  template: ApiTemplate;
+  onClose: () => void;
+  onRestored: () => void;
+}) {
+  const [versions, setVersions] = useState<VersionRow[] | null>(null);
+  const [current, setCurrent] = useState(template.version);
+  const [open, setOpen] = useState<number | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/templates/${template.id}/versions`)
+      .then((res) => res.json())
+      .then((data) => {
+        setVersions(data.versions ?? []);
+        setCurrent(data.current ?? template.version);
+      })
+      .catch(() => setVersions([]));
+  }, [template.id, template.version]);
+
+  async function restore(v: VersionRow) {
+    if (
+      !confirm(
+        `Restore version ${v.version}? It will be saved as a new version.`,
+      )
+    )
+      return;
+    setBusy(true);
+    setError("");
+    const res = await fetch(`/api/templates/${template.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(v.snapshot),
+    });
+    setBusy(false);
+    if (res.ok) onRestored();
+    else setError("Could not restore this version.");
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-panel p-5">
+        <h2 className="font-semibold">Version history — {template.title}</h2>
+        <p className="mt-0.5 text-sm text-muted">
+          Versions are saved when a template&apos;s items or fields are edited.
+          Lists already created keep the items they started with.
+        </p>
+        {versions === null ? (
+          <p className="mt-4 text-sm text-faint">Loading…</p>
+        ) : versions.length === 0 ? (
+          <p className="mt-4 text-sm text-faint">
+            No earlier versions yet — history starts with the next edit.
+          </p>
+        ) : (
+          <ul className="mt-4 space-y-2">
+            {versions.map((v) => (
+              <li
+                key={v.version}
+                className="rounded-lg border border-border-soft p-3"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    onClick={() =>
+                      setOpen(open === v.version ? null : v.version)
+                    }
+                    className="text-left text-sm"
+                  >
+                    <span className="font-medium">v{v.version}</span>
+                    {v.version === current && (
+                      <span className="ml-1.5 text-xs text-accent">
+                        current
+                      </span>
+                    )}
+                    <span className="ml-2 text-xs text-muted">
+                      {new Date(v.createdAt).toLocaleString()}
+                      {v.savedByName && ` · ${v.savedByName}`} ·{" "}
+                      {v.snapshot.items.length} items
+                    </span>
+                  </button>
+                  {v.version !== current && (
+                    <button
+                      disabled={busy}
+                      onClick={() => restore(v)}
+                      className="rounded-lg border border-border px-3 py-1 text-xs font-medium hover:bg-hover disabled:opacity-50"
+                    >
+                      Restore
+                    </button>
+                  )}
+                </div>
+                {open === v.version && (
+                  <ul className="mt-2 space-y-0.5 text-sm text-muted">
+                    {v.snapshot.items.map((i, n) => (
+                      <li key={n} className={i.indent ? "ml-4" : ""}>
+                        {i.section &&
+                        i.section !== v.snapshot.items[n - 1]?.section
+                          ? `${i.section}: `
+                          : ""}
+                        {i.text}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+        <div className="mt-4 flex justify-end">
+          <button
+            onClick={onClose}
+            className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-hover"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function TemplateEditor({

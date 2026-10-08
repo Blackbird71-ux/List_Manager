@@ -293,6 +293,7 @@ function baseTopicsFor(pathname: string): { heading: string; topics: HelpTopic[]
           points: [
             'Editing a template\'s items or fields bumps its version number.',
             'Each checklist remembers which template version it was created from, so old runs stay accurate.',
+            'Use the history button on a template card to see earlier versions and restore one. Restoring saves it as a new version.',
           ],
         },
       ],

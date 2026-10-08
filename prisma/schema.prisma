@@ -144,8 +144,24 @@ model Template {
   items        TemplateItem[]
   customFields CustomFieldDef[]
   checklists   Checklist[]
+  versions     TemplateVersion[]
 
   @@index([organizationId])
+}
+
+// Point-in-time copy of a template's items and fields, one per version, so an
+// older version can be viewed or restored. `snapshot` is JSON in the same shape
+// the template PATCH route accepts.
+model TemplateVersion {
+  id          String   @id @default(cuid())
+  templateId  String
+  template    Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  version     Int
+  snapshot    String
+  savedByName String   @default("")
+  createdAt   DateTime @default(now())
+
+  @@unique([templateId, version])
 }
 
 model TemplateItem {
