@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server'
-import { DateTime } from 'luxon'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { checklistAccessWhere } from '@/lib/access'
-import { APP_TIMEZONE } from '@/lib/timezone'
+import { formatInTzPattern } from '@/lib/timezone'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,7 +15,7 @@ function csvCell(value: string): string {
 
 function fmt(date: Date | null): string {
   if (!date) return ''
-  return DateTime.fromJSDate(date).setZone(APP_TIMEZONE).toFormat('yyyy-MM-dd HH:mm')
+  return formatInTzPattern(date, 'yyyy-MM-dd HH:mm')
 }
 
 export async function GET(request: Request) {
@@ -98,7 +97,7 @@ export async function GET(request: Request) {
   )
   const csv = [header.map(csvCell).join(','), ...rows].join('\r\n') + '\r\n'
 
-  const today = DateTime.now().setZone(APP_TIMEZONE).toFormat('yyyy-MM-dd')
+  const today = formatInTzPattern(new Date(), 'yyyy-MM-dd')
   return new NextResponse(csv, {
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',

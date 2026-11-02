@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server'
-import { DateTime } from 'luxon'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { canSeeAllChecklists } from '@/lib/access'
-import { APP_TIMEZONE } from '@/lib/timezone'
+import { weekBoundsInTz, formatInTzPattern } from '@/lib/timezone'
 
 export const dynamic = 'force-dynamic'
 
@@ -125,16 +124,14 @@ export async function GET(request: Request) {
 
   // Completions per week (app timezone), newest-last, capped at 12 weeks.
   const weeks = Math.min(MAX_TREND_WEEKS, Math.max(1, Math.ceil(days / 7)))
-  const thisWeekStart = DateTime.now().setZone(APP_TIMEZONE).startOf('week')
   const trend = []
   for (let i = weeks - 1; i >= 0; i--) {
-    const start = thisWeekStart.minus({ weeks: i })
-    const end = start.plus({ weeks: 1 })
+    const { start, end } = weekBoundsInTz(i)
     const count = completed.filter((c) => {
       const t = (c.completedAt as Date).getTime()
-      return t >= start.toMillis() && t < end.toMillis()
+      return t >= start.getTime() && t < end.getTime()
     }).length
-    trend.push({ weekStart: start.toFormat('yyyy-MM-dd'), completedCount: count })
+    trend.push({ weekStart: formatInTzPattern(start, 'yyyy-MM-dd'), completedCount: count })
   }
 
   return NextResponse.json({ totals, byUser, byCategory, byTemplate, trend })

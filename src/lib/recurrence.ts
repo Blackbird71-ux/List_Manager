@@ -1,5 +1,4 @@
-import { DateTime } from 'luxon'
-import { APP_TIMEZONE } from '@/lib/timezone'
+import { startOfDayInTz, plusInTz, type CalendarStep } from '@/lib/timezone'
 
 export const RECURRENCE_OPTIONS = [
   'none',
@@ -28,7 +27,7 @@ export function isRecurrence(value: string): value is Recurrence {
 export function computeNextDueDate(currentDue: Date | null, recurrence: Recurrence): Date | null {
   if (recurrence === 'none') return null
 
-  const step: { days?: number; weeks?: number; months?: number; years?: number } = {
+  const step: CalendarStep = {
     daily: { days: 1 },
     weekly: { weeks: 1 },
     fortnightly: { weeks: 2 },
@@ -37,14 +36,12 @@ export function computeNextDueDate(currentDue: Date | null, recurrence: Recurren
     yearly: { years: 1 },
   }[recurrence]
 
-  const today = DateTime.now().setZone(APP_TIMEZONE).startOf('day')
-  const anchor = currentDue
-    ? DateTime.fromJSDate(currentDue).setZone(APP_TIMEZONE).startOf('day')
-    : today
+  const today = startOfDayInTz()
+  const anchor = currentDue ? startOfDayInTz(currentDue) : today
 
-  let next = anchor.plus(step)
+  let next = plusInTz(anchor, step)
   while (next <= today) {
-    next = next.plus(step)
+    next = plusInTz(next, step)
   }
-  return next.toJSDate()
+  return next
 }

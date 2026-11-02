@@ -14,3 +14,27 @@ export function formatInTz(date: Date | string, options: Intl.DateTimeFormatOpti
   const dt = typeof date === 'string' ? DateTime.fromISO(date) : DateTime.fromJSDate(date)
   return dt.setZone(APP_TIMEZONE).toLocaleString(options)
 }
+
+/** Format a date in the app timezone with a Luxon pattern, e.g. 'yyyy-MM-dd HH:mm'. */
+export function formatInTzPattern(date: Date, pattern: string): string {
+  return DateTime.fromJSDate(date).setZone(APP_TIMEZONE).toFormat(pattern)
+}
+
+/** Local midnight of the given date (default: today, via Luxon's clock) as a UTC Date. */
+export function startOfDayInTz(date?: Date): Date {
+  const dt = date ? DateTime.fromJSDate(date) : DateTime.now()
+  return dt.setZone(APP_TIMEZONE).startOf('day').toJSDate()
+}
+
+export type CalendarStep = { days?: number; weeks?: number; months?: number; years?: number }
+
+/** Add a calendar step in the app timezone (DST-safe; months clamp to month end). */
+export function plusInTz(date: Date, step: CalendarStep): Date {
+  return DateTime.fromJSDate(date).setZone(APP_TIMEZONE).plus(step).toJSDate()
+}
+
+/** Bounds of the local week (Monday start) `weeksAgo` weeks before this one. */
+export function weekBoundsInTz(weeksAgo: number): { start: Date; end: Date } {
+  const start = DateTime.now().setZone(APP_TIMEZONE).startOf('week').minus({ weeks: weeksAgo })
+  return { start: start.toJSDate(), end: start.plus({ weeks: 1 }).toJSDate() }
+}
