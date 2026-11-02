@@ -59,7 +59,7 @@ ENV TZ=Australia/Sydney
 #   dcron    – lightweight cron for scheduled DB backups
 #   sqlite   – sqlite3 CLI used by entrypoint to verify DB health
 #   tzdata   – timezone database required for TZ env var to work on Alpine
-COPY --from=cloudflare/cloudflared:latest /usr/local/bin/cloudflared /usr/local/bin/cloudflared
+COPY --from=cloudflare/cloudflared:2026.10.3 /usr/local/bin/cloudflared /usr/local/bin/cloudflared
 RUN apk add --no-cache su-exec dcron sqlite tzdata \
  && cp /usr/share/zoneinfo/Australia/Sydney /etc/localtime \
  && echo "Australia/Sydney" > /etc/timezone
