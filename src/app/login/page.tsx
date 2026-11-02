@@ -5,6 +5,11 @@ import { useRouter } from 'next/navigation'
 import { signIn } from 'next-auth/react'
 import { ClipboardList } from 'lucide-react'
 
+// Only same-site paths are safe to send someone to after login (e.g. a scanned QR label).
+function safeNextPath(next: string | null): string {
+  return next && next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/\\') ? next : '/'
+}
+
 type Mode = 'signin' | 'register'
 type RegisterMode = 'create' | 'join'
 
@@ -21,9 +26,12 @@ export default function LoginPage() {
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
   const [allowNewOrgs, setAllowNewOrgs] = useState(true)
+  const [next, setNext] = useState('/')
 
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('reset') === '1') {
+    const query = new URLSearchParams(window.location.search)
+    setNext(safeNextPath(query.get('next')))
+    if (query.get('reset') === '1') {
       setNotice('Password updated — sign in with your new password.')
     }
     // The server may not accept new organisations — if so, only offer
@@ -67,7 +75,7 @@ export default function LoginPage() {
         setError('Invalid email or password')
         return
       }
-      router.push('/')
+      router.push(next)
       router.refresh()
     } finally {
       setBusy(false)

@@ -45,6 +45,7 @@ function checklistNowTopics(tags: string[]): HelpTopic[] {
       points: [
         'Review the list, then use Approve to close it off or Send back (with a reason) to reopen it for more work.',
         'Failed items are shown with a red Fail badge so you can check them first.',
+        'Approve stays greyed out while any corrective action is open — Send back is still available.',
       ],
     })
   } else if (has('pending-signoff-own')) {
@@ -134,6 +135,17 @@ function baseTopicsFor(pathname: string): { heading: string; topics: HelpTopic[]
           ],
         },
         {
+          title: 'Working offline',
+          points: [
+            'Checklists you have opened on this device still open with no signal.',
+            'Offline, ticks, readings, answers, Pass/Fail and notes are kept on the device and sent automatically when you reconnect — a banner shows how many are waiting, with "Sync now".',
+            'Ticks keep the time you actually made them (up to 7 days back).',
+            'Photos, comments, new items and "Mark all remaining" need a connection.',
+            'If someone else changed the same item meanwhile, the last change sent wins. Changes the server refuses (say the list was locked) are reported when they sync.',
+            'Signing out discards unsent changes — you are asked first.',
+          ],
+        },
+        {
           title: 'Item details',
           points: [
             'Click an item (or its speech-bubble button) to open its details in the side column: assignee, priority, due date, notes and attachments.',
@@ -143,6 +155,25 @@ function baseTopicsFor(pathname: string): { heading: string; topics: HelpTopic[]
             '"Due days before list" gives the item its own due date, that many days before the list is due.',
             'On a phone, "Take photo" opens the camera and attaches the picture to the item.',
             'Assignees are notified when an item or checklist is assigned to them.',
+          ],
+        },
+        {
+          title: 'Corrective actions',
+          points: [
+            'Marking an item Fail opens a corrective action under its result: say what needs doing, who fixes it and by when. The person you pick is notified.',
+            'Open actions are listed in a red box at the top of the list — click one to jump to the item. They also appear in the assignee\'s My Work and on the calendar.',
+            'When it is fixed, use "Mark as fixed…" and say what was done. A list that needs sign-off cannot be approved until every action is closed.',
+            'Changing the item\'s result clears its action; the Activity tab keeps the history.',
+          ],
+        },
+        {
+          title: 'Readings, answers & signatures',
+          points: [
+            'An item can ask for more than a tick: a number reading (e.g. a fridge temperature), a text answer or a signature. Set this under "Answer type" in the item\'s details, or on the template.',
+            'Type the reading or answer in the box under the item and press Enter — that ticks it. Signature items have a Sign button; draw with a mouse, finger or pen.',
+            'A number item can have an OK range. A reading outside it marks the item Fail and opens a corrective action.',
+            '"Photo required" items can\'t be ticked until a photo is attached — use Take photo in the item\'s details.',
+            '"Mark all remaining" skips items that still need an answer or photo, and tells you how many it left. Unticking an item clears its answer.',
           ],
         },
         {
@@ -218,6 +249,7 @@ function baseTopicsFor(pathname: string): { heading: string; topics: HelpTopic[]
           title: 'What this page shows',
           points: [
             'Everything assigned to you in one place: individual items on top, and whole checklists assigned to you below with their progress.',
+            'Corrective actions to fix — given to you, or unassigned on your lists — are shown first, even if the list itself is finished.',
             'Overdue items and lists are flagged in red. Click any row to jump straight to that checklist.',
           ],
         },
@@ -278,6 +310,24 @@ function baseTopicsFor(pathname: string): { heading: string; topics: HelpTopic[]
             'Templates carry items, custom fields, a default category, priority and recurrence.',
             'Use "Start checklist" on a template to create a working copy.',
             'Each template item can have an "Only if…" condition and a "Due N days before list" offset; both carry into every checklist started from it.',
+            'Each item also has an answer type — tick box, number reading (with unit and OK range), text answer or signature — and can require a photo.',
+          ],
+        },
+        {
+          title: 'Starter templates',
+          points: [
+            '"Starters" offers ready-made templates — fridge temperatures, vehicle pre-start, fire safety, opening & closing, cleaning and onboarding.',
+            'Tick the ones you want and they are added as ordinary templates: rename them, change the items or delete them freely.',
+            'A starter already in your list (same title) is shown as added, so you will not get duplicates.',
+          ],
+        },
+        {
+          title: 'QR labels',
+          points: [
+            'The QR icon on a template opens a printable label. Stick it on the fridge, vehicle, room or machine the checklist is for.',
+            'Scanning it with a phone camera opens the open checklist for that template. If there are several it lets you pick; if there are none it offers a one-tap start.',
+            'People sign in first if they need to, then land in the right place. The label only works for members of your organisation.',
+            'For checklists that repeat, one label is enough — it always finds the current one.',
           ],
         },
         {
@@ -309,6 +359,16 @@ function baseTopicsFor(pathname: string): { heading: string; topics: HelpTopic[]
             'Pick a time window (7 days to 1 year) — completed counts and averages are for that window.',
             '"Overdue now" is live: active checklists whose due date has passed.',
             '"Items ticked" counts individual checkbox ticks per person in the window.',
+            '"Finished late" is the share of lists with a due date that were completed after it.',
+          ],
+        },
+        {
+          title: 'Trends',
+          points: [
+            'Corrective actions: how many are open or overdue right now, how many were raised and closed in the window, and how long they took to close.',
+            '"Checks that fail most" ranks items marked Pass or Fail (and ranged readings) by fail rate, grouped by template and item.',
+            'Readings shows each number item: its last 30 values as a line, the OK range shaded, and out-of-range readings as red dots. Hover a dot for the date and value.',
+            'The weekly table adds the late share and the number of failed checks for each week.',
           ],
         },
         {
@@ -407,6 +467,13 @@ function baseTopicsFor(pathname: string): { heading: string; topics: HelpTopic[]
   return {
     heading: 'Your checklists',
     topics: [
+      {
+        title: 'Getting started',
+        points: [
+          'New organisations see a "Getting started" card: add a template, start a checklist and (admins) invite the team. Steps tick themselves off as you go.',
+          'Hide it with the cross — it stays hidden in this browser.',
+        ],
+      },
       {
         title: 'The dashboard',
         points: [

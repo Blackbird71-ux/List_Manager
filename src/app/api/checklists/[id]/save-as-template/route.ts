@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { normalizeItemType } from '@/lib/item-types'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { checklistAccessWhere } from '@/lib/access'
@@ -38,6 +39,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
             : null,
           conditionResult: checklist.items.some((c) => c.id === item.conditionItemId) ? item.conditionResult : '',
           dueOffsetDays: item.dueOffsetDays,
+          ...normalizeItemType(item),
           sortOrder: idx,
         })),
       },

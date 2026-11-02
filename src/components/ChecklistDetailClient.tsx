@@ -11,12 +11,14 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  CloudOff,
   Download,
   GripVertical,
   History,
   Lock,
   MessageSquare,
   Paperclip,
+  PenLine,
   Plus,
   Printer,
   RefreshCw,
@@ -33,6 +35,8 @@ import { DepartmentPicker } from '@/components/DepartmentPicker'
 import { useHelpTags } from '@/components/HelpMenu'
 import { cn } from '@/lib/utils'
 import { hiddenItemIds } from '@/lib/conditions'
+import { ITEM_KINDS, ITEM_KIND_LABELS, parseNumber, rangeLabel } from '@/lib/item-types'
+import { QUEUE_EVENT, applyPending, flushQueue, pendingChanges, saveItemChange } from '@/lib/offline-queue'
 
 // ChecklistItem.dueDate is new in the schema; ApiChecklistItem doesn't declare it yet.
 type ItemWithDue = ApiChecklistItem & { dueDate?: string | null }
@@ -93,19 +97,76 @@ export function ChecklistDetailClient({
     })
   }
 
+  // The last copy from the server; what's shown is this plus any changes still
+  // waiting on this device to be sent.
+  const serverCopy = useRef<ApiChecklist | null>(null)
+  const [online, setOnline] = useState(true)
+  const [pendingCount, setPendingCount] = useState(0)
+
+  const showWithPending = useCallback(() => {
+    setPendingCount(pendingChanges(currentUserId).length)
+    const base = serverCopy.current
+    if (base) setChecklist({ ...base, items: applyPending(base.items, pendingChanges(currentUserId, checklistId)) })
+  }, [checklistId, currentUserId])
+
+  const setFromServer = useCallback(
+    (cl: ApiChecklist) => {
+      serverCopy.current = cl
+      showWithPending()
+    },
+    [showWithPending]
+  )
+
   const load = useCallback(async () => {
-    const [clRes, uRes] = await Promise.all([
-      fetch(`/api/checklists/${checklistId}`),
-      fetch('/api/users'),
-    ])
-    if (clRes.ok) setChecklist((await clRes.json()).checklist)
-    if (uRes.ok) setUsers((await uRes.json()).users)
+    try {
+      const [clRes, uRes] = await Promise.all([
+        fetch(`/api/checklists/${checklistId}`),
+        fetch('/api/users'),
+      ])
+      if (clRes.ok) serverCopy.current = (await clRes.json()).checklist
+      if (uRes.ok) setUsers((await uRes.json()).users)
+    } catch {
+      // Offline with nothing cached: keep showing the last copy.
+    }
+    showWithPending()
     setLoading(false)
-  }, [checklistId])
+  }, [checklistId, showWithPending])
+
+  // Send changes made offline, then refresh. Changes the server refuses (the list
+  // was locked or the item deleted meanwhile) are dropped and reported.
+  const sync = useCallback(async () => {
+    if (pendingChanges(currentUserId).length > 0) {
+      const result = await flushQueue(currentUserId)
+      if (result.rejected.length > 0) {
+        const reasons = [...new Set(result.rejected.map((r) => r.error))].join('\n')
+        alert(
+          `${result.rejected.length} change${result.rejected.length === 1 ? '' : 's'} made offline couldn't be saved:\n${reasons}`
+        )
+      }
+    }
+    await load()
+  }, [currentUserId, load])
 
   useEffect(() => {
-    load()
-  }, [load])
+    sync()
+  }, [sync])
+
+  useEffect(() => {
+    setOnline(navigator.onLine)
+    const goOnline = () => {
+      setOnline(true)
+      sync()
+    }
+    const goOffline = () => setOnline(false)
+    window.addEventListener('online', goOnline)
+    window.addEventListener('offline', goOffline)
+    window.addEventListener(QUEUE_EVENT, showWithPending)
+    return () => {
+      window.removeEventListener('online', goOnline)
+      window.removeEventListener('offline', goOffline)
+      window.removeEventListener(QUEUE_EVENT, showWithPending)
+    }
+  }, [sync, showWithPending])
 
   // Auto-refresh: poll while the tab is visible, but never clobber
   // in-progress edits — skip while dragging or while the user is focused
@@ -123,7 +184,7 @@ export function ChecklistDetailClient({
       ) {
         return
       }
-      load()
+      sync()
       setPollTick((t) => t + 1)
     }
     const interval = setInterval(refresh, 20_000)
@@ -135,7 +196,7 @@ export function ChecklistDetailClient({
       clearInterval(interval)
       document.removeEventListener('visibilitychange', onVisibility)
     }
-  }, [load])
+  }, [sync])
 
   async function patchChecklist(data: Record<string, unknown>) {
     const res = await fetch(`/api/checklists/${checklistId}`, {
@@ -143,20 +204,21 @@ export function ChecklistDetailClient({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
-    if (res.ok) setChecklist((await res.json()).checklist)
+    if (res.ok) setFromServer((await res.json()).checklist)
   }
 
-  async function toggleItem(item: ApiChecklistItem) {
-    const res = await fetch(`/api/checklists/${checklistId}/items/${item.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ checked: !item.checked }),
-    })
-    if (res.ok) {
-      const data = await res.json()
-      if (data.checklistCompleted) setJustCompleted(true)
-      load()
-    }
+  // Change an item, from its row or its details. A photo-required item without a
+  // photo opens its details so the photo can be added. With no connection the
+  // change is kept on this device and sent later.
+  async function updateItem(item: ApiChecklistItem, data: Record<string, unknown>) {
+    const result = await saveItemChange({ userId: currentUserId, checklistId, itemId: item.id, data })
+    if (result.status === 'rejected') {
+      alert(result.error)
+      if (item.photoRequired) showItem(item)
+    } else if (result.status === 'saved' && result.body.checklistCompleted) setJustCompleted(true)
+    // Queued behind earlier offline changes while online: send them all now.
+    if (result.status === 'queued' && navigator.onLine) await sync()
+    else await load()
   }
 
   async function markAll(mode: 'tick' | 'pass' | 'na') {
@@ -170,6 +232,11 @@ export function ChecklistDetailClient({
     if (res.ok) {
       const data = await res.json()
       if (data.checklistCompleted) setJustCompleted(true)
+      if (data.skipped > 0) {
+        alert(
+          `${data.skipped} item${data.skipped === 1 ? '' : 's'} still need${data.skipped === 1 ? 's' : ''} a reading, answer, signature or photo, so ${data.skipped === 1 ? 'it was' : 'they were'} left for you to do.`
+        )
+      }
       load()
     }
   }
@@ -195,7 +262,7 @@ export function ChecklistDetailClient({
     const res = await fetch(`/api/checklists/${checklistId}/reset`, { method: 'POST' })
     if (res.ok) {
       setJustCompleted(false)
-      setChecklist((await res.json()).checklist)
+      setFromServer((await res.json()).checklist)
     }
   }
 
@@ -229,6 +296,19 @@ export function ChecklistDetailClient({
     } else {
       alert('Could not save as a template.')
     }
+  }
+
+  // Jump to an item from the corrective-action banner: open its section and details.
+  function showItem(item: ApiChecklistItem) {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      next.delete(item.section)
+      return next
+    })
+    setSelectedId(item.id)
+    requestAnimationFrame(() =>
+      document.getElementById(`item-${item.id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    )
   }
 
   async function signOff(decision: 'approve' | 'reject') {
@@ -294,6 +374,7 @@ export function ChecklistDetailClient({
   const pendingSignOff = completed && checklist.requiresSignOff && !checklist.signedOffAt
   const isApprover = currentUserRole === 'admin' || currentUserRole === 'manager'
   const canApprove = pendingSignOff && isApprover && checklist.completedById !== currentUserId
+  const openActions = checklist.items.filter((i) => !hidden.has(i.id) && i.result === 'fail' && !i.actionClosedAt)
   const canManage =
     currentUserRole === 'admin' ||
     currentUserRole === 'manager' ||
@@ -572,6 +653,25 @@ export function ChecklistDetailClient({
         <ArrowLeft className="h-4 w-4" /> All checklists
       </Link>
 
+      {(!online || pendingCount > 0) && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn">
+          <CloudOff className="h-4 w-4 shrink-0" />
+          <span className="flex-1">
+            {!online && "You're offline. Ticks, answers, results and notes are kept on this device and sent when you're back online. "}
+            {pendingCount > 0 &&
+              `${pendingCount} change${pendingCount === 1 ? '' : 's'} waiting to sync.`}
+          </span>
+          {online && pendingCount > 0 && (
+            <button
+              onClick={() => sync()}
+              className="rounded-lg border border-warn/40 px-3 py-1 text-xs font-semibold hover:bg-warn/10"
+            >
+              Sync now
+            </button>
+          )}
+        </div>
+      )}
+
       {completed && checklist.nextInstanceId && (
         <div className="flex items-center gap-2 rounded-xl border border-ok/30 bg-ok-soft px-4 py-3 text-sm text-ok">
           <RefreshCw className="h-4 w-4 shrink-0" />
@@ -594,7 +694,9 @@ export function ChecklistDetailClient({
           <ShieldCheck className="h-4 w-4 shrink-0" />
           <span className="flex-1">
             {canApprove
-              ? 'This list is finished and needs your sign-off.'
+              ? openActions.length > 0
+                ? 'This list is finished, but its corrective actions must be closed before you can approve it.'
+                : 'This list is finished and needs your sign-off.'
               : isApprover && checklist.completedById === currentUserId
                 ? 'Awaiting sign-off — another manager must approve it, as you completed it.'
                 : 'Awaiting manager sign-off.'}
@@ -603,7 +705,9 @@ export function ChecklistDetailClient({
             <div className="flex gap-2">
               <button
                 onClick={() => signOff('approve')}
-                className="rounded-lg bg-ok px-3 py-1.5 text-sm font-semibold text-accent-ink hover:opacity-90"
+                disabled={openActions.length > 0}
+                title={openActions.length > 0 ? 'Close the open corrective actions first' : undefined}
+                className="rounded-lg bg-ok px-3 py-1.5 text-sm font-semibold text-accent-ink hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Approve
               </button>
@@ -615,6 +719,30 @@ export function ChecklistDetailClient({
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {openActions.length > 0 && (
+        <div className="rounded-xl border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger">
+          <p className="font-medium">
+            {openActions.length} open corrective action{openActions.length === 1 ? '' : 's'}
+            {checklist.requiresSignOff && ' — sign-off waits until they are closed'}
+          </p>
+          <ul className="mt-1 space-y-0.5">
+            {openActions.map((i) => (
+              <li key={i.id}>
+                <button type="button" onClick={() => showItem(i)} className="text-left font-medium hover:underline">
+                  {i.text}
+                </button>
+                <span className="text-danger/80">
+                  {' — '}
+                  {i.actionText || 'no action written yet'}
+                  {i.actionAssignedTo ? ` · ${i.actionAssignedTo.name}` : ' · unassigned'}
+                  {i.actionDueDate && ` · due ${new Date(i.actionDueDate).toLocaleDateString()}`}
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -673,7 +801,7 @@ export function ChecklistDetailClient({
               wide={wide}
               selected={selectedId === item.id}
               onSelect={() => setSelectedId((cur) => (cur === item.id ? null : item.id))}
-              onToggle={() => toggleItem(item)}
+              onUpdate={(data) => updateItem(item, data)}
               onChanged={load}
               dragging={dragId === item.id}
               onDragStart={() => setDragId(item.id)}
@@ -724,7 +852,7 @@ export function ChecklistDetailClient({
               <input
                 type="checkbox"
                 checked={selectedItem.checked}
-                onChange={() => toggleItem(selectedItem)}
+                onChange={() => updateItem(selectedItem, { checked: !selectedItem.checked })}
                 className="mt-0.5 h-5 w-5 shrink-0 accent-accent"
               />
               <h2
@@ -749,6 +877,7 @@ export function ChecklistDetailClient({
               item={selectedItem}
               users={users}
               earlier={checklist.items.slice(0, Math.max(0, checklist.items.findIndex((i) => i.id === selectedItem.id)))}
+              onUpdate={(data) => updateItem(selectedItem, data)}
               onChanged={load}
               panel
             />
@@ -792,6 +921,8 @@ const ACTION_LABELS: Record<string, string> = {
   signed_off: 'signed off',
   document_added: 'added a supporting document',
   sign_off_rejected: 'sent back for rework',
+  action_closed: 'closed a corrective action',
+  action_reopened: 'reopened a corrective action',
   sign_off_setting: 'changed the sign-off setting',
   item_unchecked: 'unchecked',
   item_added: 'added item',
@@ -1397,6 +1528,7 @@ function ItemDetails({
   item,
   users,
   earlier,
+  onUpdate,
   onChanged,
   panel,
 }: {
@@ -1405,6 +1537,8 @@ function ItemDetails({
   users: ApiUser[]
   // Items above this one: the only ones a condition can depend on.
   earlier: ApiChecklistItem[]
+  // Save a change to this item (queued when offline).
+  onUpdate: (data: Record<string, unknown>) => Promise<void>
   onChanged: () => void
   panel?: boolean
 }) {
@@ -1412,14 +1546,7 @@ function ItemDetails({
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  async function patchItem(data: Record<string, unknown>) {
-    await fetch(`/api/checklists/${checklistId}/items/${item.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    })
-    onChanged()
-  }
+  const patchItem = onUpdate
 
   async function uploadFile(file: File) {
     setUploading(true)
@@ -1517,6 +1644,10 @@ function ItemDetails({
           </div>
           </div>
 
+          {item.result === 'fail' && (
+            <CorrectiveAction item={item} users={users} patchItem={patchItem} />
+          )}
+
           <div className={cn('grid gap-3', panel ? 'grid-cols-2' : 'sm:grid-cols-2 md:grid-cols-4')}>
             <label className="block text-sm sm:col-span-2">
               <span className="mb-1 block text-xs font-medium text-muted">Only show this item when…</span>
@@ -1566,6 +1697,67 @@ function ItemDetails({
                 }}
                 className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
               />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-muted">Answer type</span>
+              <select
+                value={item.kind}
+                onChange={(e) => {
+                  if (item.value && !confirm('Changing the answer type clears the current answer. Continue?')) return
+                  patchItem({ kind: e.target.value })
+                }}
+                className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
+              >
+                {ITEM_KINDS.map((k) => (
+                  <option key={k} value={k}>
+                    {ITEM_KIND_LABELS[k]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {item.kind === 'number' && (
+              <>
+                <label className="block text-sm">
+                  <span className="mb-1 block text-xs font-medium text-muted">Unit</span>
+                  <input
+                    key={`unit-${item.unit}`}
+                    defaultValue={item.unit}
+                    maxLength={20}
+                    placeholder="e.g. °C"
+                    onBlur={(e) => e.target.value.trim() !== item.unit && patchItem({ unit: e.target.value })}
+                    className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
+                  />
+                </label>
+                {(['minValue', 'maxValue'] as const).map((field) => (
+                  <label key={field} className="block text-sm">
+                    <span className="mb-1 block text-xs font-medium text-muted">
+                      {field === 'minValue' ? 'Lowest OK reading' : 'Highest OK reading'}
+                    </span>
+                    <input
+                      key={`${field}-${item[field]}`}
+                      type="number"
+                      step="any"
+                      defaultValue={item[field] ?? ''}
+                      placeholder="no limit"
+                      onBlur={(e) => {
+                        const v = e.target.value.trim() === '' ? null : Number(e.target.value)
+                        if (v !== null && !Number.isFinite(v)) return
+                        if (v !== item[field]) patchItem({ [field]: v })
+                      }}
+                      className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
+                    />
+                  </label>
+                ))}
+              </>
+            )}
+            <label className="flex items-center gap-2 self-end pb-1.5 text-sm">
+              <input
+                type="checkbox"
+                checked={item.photoRequired}
+                onChange={(e) => patchItem({ photoRequired: e.target.checked })}
+                className="h-4 w-4 accent-accent"
+              />
+              Photo required to tick
             </label>
           </div>
 
@@ -1638,6 +1830,141 @@ function ItemDetails({
   )
 }
 
+// yyyy-mm-dd of an instant in the browser's timezone, for <input type="date">.
+function localDay(iso: string | null | undefined) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// What will be done about a failed item, by whom and by when. Open actions hold up sign-off.
+function CorrectiveAction({
+  item,
+  users,
+  patchItem,
+}: {
+  item: ItemWithDue
+  users: ApiUser[]
+  patchItem: (data: Record<string, unknown>) => Promise<void>
+}) {
+  const [text, setText] = useState(item.actionText)
+  const [closing, setClosing] = useState(false)
+  const [note, setNote] = useState('')
+
+  if (item.actionClosedAt) {
+    return (
+      <div className="space-y-1 rounded-lg border border-ok/30 bg-ok-soft p-3 text-sm">
+        <p className="font-medium text-ok">Corrective action closed</p>
+        {item.actionText && <p>{item.actionText}</p>}
+        <p className="text-muted">
+          {item.actionClosedByName}, {new Date(item.actionClosedAt).toLocaleDateString()}: {item.actionCloseNote}
+        </p>
+        <button
+          type="button"
+          onClick={() => patchItem({ actionClosed: false })}
+          className="rounded-lg border border-border px-3 py-1 text-xs font-medium hover:bg-hover"
+        >
+          Reopen
+        </button>
+      </div>
+    )
+  }
+
+  const saveText = () => (text.trim() !== item.actionText ? { actionText: text } : {})
+
+  return (
+    <div className="space-y-2 rounded-lg border border-danger/30 bg-danger-soft p-3">
+      <p className="text-sm font-medium text-danger">Corrective action (open)</p>
+      <label className="block text-sm">
+        <span className="mb-1 block text-xs font-medium text-muted">What needs to be done</span>
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={() => text.trim() !== item.actionText && patchItem({ actionText: text })}
+          rows={2}
+          placeholder="e.g. Replace the extinguisher and re-tag it"
+          className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
+        />
+      </label>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <label className="block text-sm">
+          <span className="mb-1 block text-xs font-medium text-muted">Who fixes it</span>
+          <select
+            value={item.actionAssignedTo?.id ?? ''}
+            onChange={(e) => patchItem({ ...saveText(), actionAssignedToId: e.target.value || null })}
+            className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
+          >
+            <option value="">Unassigned</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-sm">
+          <span className="mb-1 block text-xs font-medium text-muted">Fix by</span>
+          <input
+            type="date"
+            value={localDay(item.actionDueDate)}
+            onChange={(e) =>
+              patchItem({
+                ...saveText(),
+                actionDueDate: e.target.value ? new Date(`${e.target.value}T00:00:00`).toISOString() : null,
+              })
+            }
+            className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
+          />
+        </label>
+      </div>
+      {closing ? (
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault()
+            if (!note.trim()) return
+            await patchItem({ ...saveText(), actionClosed: true, actionCloseNote: note.trim() })
+            setClosing(false)
+          }}
+          className="space-y-2"
+        >
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+            autoFocus
+            placeholder="What was done? (required)"
+            className="w-full rounded-lg border border-border bg-field px-2 py-1.5 text-sm"
+          />
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={!note.trim()}
+              className="rounded-lg bg-ok px-3 py-1.5 text-xs font-semibold text-accent-ink disabled:opacity-40"
+            >
+              Close action
+            </button>
+            <button
+              type="button"
+              onClick={() => setClosing(false)}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-hover"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setClosing(true)}
+          className="rounded-lg border border-ok/40 px-3 py-1.5 text-xs font-semibold text-ok hover:bg-ok-soft"
+        >
+          Mark as fixed…
+        </button>
+      )}
+    </div>
+  )
+}
+
 function ItemRow({
   checklistId,
   item,
@@ -1646,7 +1973,7 @@ function ItemRow({
   wide,
   selected,
   onSelect,
-  onToggle,
+  onUpdate,
   onChanged,
   dragging,
   onDragStart,
@@ -1661,7 +1988,8 @@ function ItemRow({
   wide: boolean
   selected: boolean
   onSelect: () => void
-  onToggle: () => void
+  // Tick, untick or answer the item.
+  onUpdate: (data: Record<string, unknown>) => Promise<void>
   onChanged: () => void
   dragging: boolean
   onDragStart: () => void
@@ -1669,8 +1997,22 @@ function ItemRow({
   onDragEnd: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
+  // Picked from the corrective-action banner: open the details inline.
+  useEffect(() => {
+    if (selected && !wide) setExpanded(true)
+  }, [selected, wide])
   // Only arm dragging from the grip so text selection and inputs keep working.
   const [armed, setArmed] = useState(false)
+  const [signing, setSigning] = useState(false)
+  const answerRef = useRef<HTMLInputElement>(null)
+  const photos = item.attachments.filter((a) => a.mimeType.startsWith('image/')).length
+
+  // An unanswered typed item is ticked by answering it, so the box leads there.
+  function toggle() {
+    if (!item.checked && item.kind === 'signature' && !item.value) setSigning(true)
+    else if (!item.checked && item.kind !== 'check' && !item.value) answerRef.current?.focus()
+    else onUpdate({ checked: !item.checked })
+  }
 
   async function addSubtask() {
     const text = prompt(`New subtask under "${item.text}":`)?.trim()
@@ -1694,6 +2036,7 @@ function ItemRow({
 
   return (
     <div
+      id={`item-${item.id}`}
       draggable={armed}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
@@ -1715,6 +2058,30 @@ function ItemRow({
           <p className={cn('text-sm', item.checked && 'text-faint line-through')}>
             {item.text}
           </p>
+          {(item.kind === 'number' || item.kind === 'text') && (
+            <AnswerField item={item} inputRef={answerRef} onSave={(value) => onUpdate({ value })} />
+          )}
+          {item.kind === 'signature' &&
+            (item.value ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={item.value}
+                alt={`Signature for ${item.text}`}
+                title="Untick the item to sign again"
+                className="mt-1 h-12 rounded border border-border bg-white"
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setSigning(true)
+                }}
+                className="mt-1 flex items-center gap-1.5 rounded-lg border border-border px-3 py-1 text-xs font-medium hover:bg-hover"
+              >
+                <PenLine className="h-3.5 w-3.5" /> Sign
+              </button>
+            ))}
           {item.checked && item.checkedByName && (
             <p className="text-[11px] text-faint">
               {item.checkedByName}
@@ -1733,6 +2100,30 @@ function ItemRow({
             )}
           >
             {item.result === 'na' ? 'N/A' : item.result}
+          </span>
+        )}
+        {item.result === 'fail' && (
+          <span
+            className={cn(
+              'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold',
+              item.actionClosedAt ? 'bg-ok-soft text-ok' : 'bg-warn-soft text-warn'
+            )}
+            title={item.actionText || undefined}
+          >
+            {item.actionClosedAt ? 'Fixed' : 'Action open'}
+          </span>
+        )}
+
+        {item.photoRequired && (
+          <span
+            className={cn(
+              'flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold',
+              photos > 0 ? 'bg-hover text-muted' : 'bg-warn-soft text-warn'
+            )}
+            title={photos > 0 ? 'Photo added' : 'A photo is needed before this can be ticked'}
+          >
+            <Camera className="h-3 w-3" />
+            {photos > 0 ? photos : 'Photo'}
           </span>
         )}
 
@@ -1798,7 +2189,8 @@ function ItemRow({
         <input
           type="checkbox"
           checked={item.checked}
-          onChange={onToggle}
+          onChange={toggle}
+          title={item.checked && item.value ? 'Untick to clear the answer' : undefined}
           className="ml-1 h-5 w-5 shrink-0 accent-accent"
         />
         <span
@@ -1814,8 +2206,178 @@ function ItemRow({
       </div>
 
       {!wide && expanded && (
-        <ItemDetails checklistId={checklistId} item={item} users={users} earlier={earlier} onChanged={onChanged} />
+        <ItemDetails
+          checklistId={checklistId}
+          item={item}
+          users={users}
+          earlier={earlier}
+          onUpdate={onUpdate}
+          onChanged={onChanged}
+        />
       )}
+      {signing && (
+        <SignaturePad
+          title={item.text}
+          onCancel={() => setSigning(false)}
+          onSave={async (value) => {
+            setSigning(false)
+            await onUpdate({ value })
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// Inline reading or text answer on an item row; saves on Enter or when leaving the field.
+function AnswerField({
+  item,
+  inputRef,
+  onSave,
+}: {
+  item: ApiChecklistItem
+  inputRef: React.RefObject<HTMLInputElement | null>
+  onSave: (value: string) => void
+}) {
+  const [draft, setDraft] = useState(item.value)
+  useEffect(() => setDraft(item.value), [item.value])
+  const number = item.kind === 'number'
+  const invalid = number && draft.trim() !== '' && parseNumber(draft) === null
+  const range = number ? rangeLabel(item.minValue, item.maxValue, item.unit) : ''
+
+  function commit() {
+    const v = draft.trim()
+    if (!invalid && v !== item.value) onSave(v)
+  }
+
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
+      <input
+        ref={inputRef}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            e.currentTarget.blur()
+          }
+        }}
+        inputMode={number ? 'decimal' : 'text'}
+        maxLength={number ? 30 : 2000}
+        placeholder={number ? 'Reading' : 'Answer'}
+        aria-label={`${number ? 'Reading' : 'Answer'} for ${item.text}`}
+        className={cn(
+          'rounded-lg border bg-field px-2 py-1 text-sm',
+          number ? 'w-28' : 'w-full max-w-sm',
+          invalid ? 'border-danger' : 'border-border'
+        )}
+      />
+      {number && item.unit && <span className="text-xs text-muted">{item.unit}</span>}
+      {range && <span className="text-xs text-faint">OK: {range}</span>}
+      {invalid && <span className="text-xs text-danger">Enter a number</span>}
+    </div>
+  )
+}
+
+// Draw a signature with mouse, finger or pen; saved as a small PNG data URL.
+function SignaturePad({
+  title,
+  onCancel,
+  onSave,
+}: {
+  title: string
+  onCancel: () => void
+  onSave: (dataUrl: string) => void
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const drawing = useRef(false)
+  const [drawn, setDrawn] = useState(false)
+
+  const clear = useCallback(() => {
+    const ctx = canvasRef.current?.getContext('2d')
+    if (!ctx) return
+    // White background so the signature reads in dark mode and on paper.
+    ctx.fillStyle = '#fff'
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+    setDrawn(false)
+  }, [])
+  useEffect(clear, [clear])
+
+  function point(e: React.PointerEvent<HTMLCanvasElement>) {
+    const rect = e.currentTarget.getBoundingClientRect()
+    return {
+      x: ((e.clientX - rect.left) / rect.width) * e.currentTarget.width,
+      y: ((e.clientY - rect.top) / rect.height) * e.currentTarget.height,
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onCancel}>
+      <div
+        className="w-full max-w-md space-y-3 rounded-xl border border-border bg-panel p-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div>
+          <h2 className="font-semibold">Sign</h2>
+          <p className="truncate text-sm text-muted">{title}</p>
+        </div>
+        <canvas
+          ref={canvasRef}
+          width={400}
+          height={160}
+          className="w-full touch-none rounded-lg border border-border bg-white"
+          onPointerDown={(e) => {
+            const ctx = e.currentTarget.getContext('2d')
+            if (!ctx) return
+            e.currentTarget.setPointerCapture(e.pointerId)
+            drawing.current = true
+            const { x, y } = point(e)
+            ctx.beginPath()
+            ctx.moveTo(x, y)
+          }}
+          onPointerMove={(e) => {
+            const ctx = e.currentTarget.getContext('2d')
+            if (!drawing.current || !ctx) return
+            const { x, y } = point(e)
+            ctx.lineWidth = 2.5
+            ctx.lineCap = 'round'
+            ctx.lineJoin = 'round'
+            ctx.strokeStyle = '#111'
+            ctx.lineTo(x, y)
+            ctx.stroke()
+            setDrawn(true)
+          }}
+          onPointerUp={() => (drawing.current = false)}
+          onPointerCancel={() => (drawing.current = false)}
+        />
+        <div className="flex justify-between gap-2">
+          <button
+            type="button"
+            onClick={clear}
+            className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium hover:bg-hover"
+          >
+            Clear
+          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium hover:bg-hover"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={!drawn}
+              onClick={() => canvasRef.current && onSave(canvasRef.current.toDataURL('image/png'))}
+              className="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-ink hover:bg-accent-2 disabled:opacity-40"
+            >
+              Save signature
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

@@ -3,6 +3,8 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { canSeeAllChecklists } from '@/lib/access'
 import { weekBoundsInTz, formatInTzPattern } from '@/lib/timezone'
+import { OPEN_ACTION } from '@/lib/corrective-actions'
+import { actionStats, checkStats, readingStats, type TrendItem } from '@/lib/trends'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,7 +39,20 @@ export async function GET(request: Request) {
   const since = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
 
   const organizationId = session.user.organizationId
-  const [checklists, checkedItems, users] = await Promise.all([
+  const trendSelect = {
+    text: true,
+    kind: true,
+    result: true,
+    value: true,
+    unit: true,
+    minValue: true,
+    maxValue: true,
+    checkedAt: true,
+    actionDueDate: true,
+    actionClosedAt: true,
+    checklist: { select: { title: true, template: { select: { title: true } } } },
+  } as const
+  const [checklists, checkedItems, users, resultItems, openActionItems] = await Promise.all([
     prisma.checklist.findMany({
       where: {
         organizationId,
@@ -62,7 +77,35 @@ export async function GET(request: Request) {
       select: { id: true, name: true },
       orderBy: { name: 'asc' },
     }),
+    // Inspection results and readings in the window, plus actions closed in it.
+    prisma.checklistItem.findMany({
+      where: {
+        checklist: { organizationId },
+        OR: [
+          { checkedAt: { gte: since }, OR: [{ result: { in: ['pass', 'fail'] } }, { kind: 'number' }] },
+          { result: 'fail', actionClosedAt: { gte: since } },
+        ],
+      },
+      select: trendSelect,
+    }),
+    prisma.checklistItem.findMany({
+      where: { ...OPEN_ACTION, checklist: { organizationId } },
+      select: trendSelect,
+    }),
   ])
+
+  // Group items by the template they came from, or the list title for one-offs.
+  const toTrendItem = ({ checklist, ...i }: (typeof resultItems)[number]): TrendItem => ({
+    ...i,
+    source: checklist.template?.title ?? checklist.title,
+  })
+  const recentItems = resultItems.map(toTrendItem)
+  const inWindow = recentItems.filter((i) => i.checkedAt && i.checkedAt >= since)
+  const trends = {
+    checks: checkStats(inWindow),
+    readings: readingStats(inWindow),
+    actions: actionStats(openActionItems.map(toTrendItem), recentItems, since, now),
+  }
 
   const active = checklists.filter((c) => c.status === 'active')
   const completed = checklists.filter((c) => c.status === 'completed' && c.completedAt)
@@ -103,6 +146,7 @@ export async function GET(request: Request) {
       completedInWindow: catCompleted.length,
       overdueNow: catActive.filter(isOverdue).length,
       avgCompletionHours: avgHours(catCompleted.map(completionSpan)),
+      lateRate: lateRate(catCompleted),
     }
   })
 
@@ -122,17 +166,20 @@ export async function GET(request: Request) {
     }))
     .sort((a, b) => b.runs - a.runs)
 
-  // Completions per week (app timezone), newest-last, capped at 12 weeks.
+  // Completions and failed checks per week (app timezone), newest-last, capped at 12 weeks.
   const weeks = Math.min(MAX_TREND_WEEKS, Math.max(1, Math.ceil(days / 7)))
   const trend = []
   for (let i = weeks - 1; i >= 0; i--) {
     const { start, end } = weekBoundsInTz(i)
-    const count = completed.filter((c) => {
-      const t = (c.completedAt as Date).getTime()
-      return t >= start.getTime() && t < end.getTime()
-    }).length
-    trend.push({ weekStart: formatInTzPattern(start, 'yyyy-MM-dd'), completedCount: count })
+    const inWeek = (d: Date) => d >= start && d < end
+    const weekDone = completed.filter((c) => inWeek(c.completedAt as Date))
+    trend.push({
+      weekStart: formatInTzPattern(start, 'yyyy-MM-dd'),
+      completedCount: weekDone.length,
+      lateRate: lateRate(weekDone),
+      failCount: inWindow.filter((i) => i.result === 'fail' && inWeek(i.checkedAt as Date)).length,
+    })
   }
 
-  return NextResponse.json({ totals, byUser, byCategory, byTemplate, trend })
+  return NextResponse.json({ totals, byUser, byCategory, byTemplate, trend, trends })
 }

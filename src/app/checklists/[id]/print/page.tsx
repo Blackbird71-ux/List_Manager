@@ -6,10 +6,12 @@ import { prisma } from '@/lib/prisma'
 import { canAccessChecklist } from '@/lib/access'
 import { formatInTz } from '@/lib/timezone'
 import { hiddenItemIds } from '@/lib/conditions'
+import { rangeLabel } from '@/lib/item-types'
 import { PrintButton } from '@/components/PrintButton'
 
 const when = (d: Date | null) =>
   d ? formatInTz(d, { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''
+const day = (d: Date) => formatInTz(d, { day: 'numeric', month: 'short', year: 'numeric' })
 
 const RESULT_LABEL: Record<string, string> = { pass: 'Pass', fail: 'Fail', na: 'N/A' }
 
@@ -24,7 +26,7 @@ export default async function PrintChecklistPage({ params }: { params: Promise<{
   const checklist = await prisma.checklist.findUnique({
     where: { id },
     include: {
-      items: { orderBy: { sortOrder: 'asc' }, include: { assignedTo: { select: { name: true } } } },
+      items: { orderBy: { sortOrder: 'asc' }, include: { assignedTo: { select: { name: true } }, actionAssignedTo: { select: { name: true } } } },
       fieldValues: true,
       assignedTo: { select: { name: true } },
       createdBy: { select: { name: true } },
@@ -96,7 +98,35 @@ export default async function PrintChecklistPage({ params }: { params: Promise<{
                   <td className="py-1.5">{item.checked ? '☑' : '☐'}</td>
                   <td className={`py-1.5 ${item.indent ? 'pl-5' : ''}`}>
                     {item.text}
+                    {item.value && (item.kind === 'number' || item.kind === 'text') && (
+                      <div className="text-xs">
+                        <span className="font-semibold">{item.kind === 'number' ? 'Reading' : 'Answer'}:</span>{' '}
+                        {item.value}
+                        {item.unit && ` ${item.unit}`}
+                        {rangeLabel(item.minValue, item.maxValue, item.unit) &&
+                          ` (OK: ${rangeLabel(item.minValue, item.maxValue, item.unit)})`}
+                      </div>
+                    )}
+                    {item.value && item.kind === 'signature' && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={item.value} alt="Signature" className="mt-1 h-12" />
+                    )}
                     {item.notes && <div className="text-xs italic text-gray-700">{item.notes}</div>}
+                    {item.result === 'fail' && (
+                      <div className="mt-1 border-l-2 border-gray-400 pl-2 text-xs">
+                        <span className="font-semibold">
+                          Corrective action {item.actionClosedAt ? '— closed' : '— OPEN'}:
+                        </span>{' '}
+                        {item.actionText || 'not described'}
+                        {item.actionAssignedTo && ` · ${item.actionAssignedTo.name}`}
+                        {item.actionDueDate && ` · fix by ${day(item.actionDueDate)}`}
+                        {item.actionClosedAt && (
+                          <div className="text-gray-700">
+                            Closed by {item.actionClosedByName}, {when(item.actionClosedAt)}: {item.actionCloseNote}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </td>
                   <td className="py-1.5">{RESULT_LABEL[item.result] ?? ''}</td>
                   <td className="py-1.5 text-xs">

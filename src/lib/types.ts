@@ -31,6 +31,12 @@ export interface ApiTemplateItem {
   conditionIndex: number | null
   conditionResult: string
   dueOffsetDays: number | null
+  // Answer type (see src/lib/item-types.ts).
+  kind: string
+  unit: string
+  minValue: number | null
+  maxValue: number | null
+  photoRequired: boolean
 }
 
 export interface ApiCustomFieldDef {
@@ -84,6 +90,20 @@ export interface ApiChecklistItem {
   assignedTo: ApiUserRef | null
   checkedByName: string | null
   checkedAt: string | null
+  // Answer type and the typed answer (see src/lib/item-types.ts).
+  kind: string
+  unit: string
+  minValue: number | null
+  maxValue: number | null
+  photoRequired: boolean
+  value: string
+  // Corrective action, used only when result is "fail".
+  actionText: string
+  actionAssignedTo: ApiUserRef | null
+  actionDueDate: string | null
+  actionClosedAt: string | null
+  actionClosedByName: string | null
+  actionCloseNote: string
   attachments: ApiAttachment[]
 }
 

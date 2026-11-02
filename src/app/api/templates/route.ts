@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { itemTypeFields, normalizeItemType } from '@/lib/item-types'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { RECURRENCE_OPTIONS } from '@/lib/recurrence'
@@ -39,6 +40,7 @@ const itemSchema = z.object({
   conditionIndex: z.number().int().min(0).nullish(),
   conditionResult: z.enum(['', 'pass', 'fail', 'na']).default(''),
   dueOffsetDays: z.number().int().min(0).max(365).nullish(),
+  ...itemTypeFields,
 })
 
 const fieldSchema = z.object({
@@ -89,6 +91,7 @@ export async function POST(request: Request) {
           conditionIndex: item.conditionIndex ?? null,
           conditionResult: item.conditionIndex == null ? '' : item.conditionResult,
           dueOffsetDays: item.dueOffsetDays ?? null,
+          ...normalizeItemType(item),
           sortOrder: idx,
         })),
       },

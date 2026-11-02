@@ -21,11 +21,28 @@ import { HelpMenu, HelpProvider } from '@/components/HelpMenu'
 import { NotificationsBell } from '@/components/NotificationsBell'
 import { SearchOverlay } from '@/components/SearchOverlay'
 import { cn } from '@/lib/utils'
+import { clearQueue, hasQueuedChanges } from '@/lib/offline-queue'
 import { useState, useEffect } from 'react'
 
 interface AppShellProps {
   user: { name: string; role: string }
   children: React.ReactNode
+}
+
+// Signing out forgets this device's offline copies and unsent changes, so the next
+// person to use it sees none of them.
+async function signOutAndForget() {
+  if (
+    hasQueuedChanges() &&
+    !confirm('Some changes made offline haven’t been sent yet. Sign out anyway and discard them?')
+  ) {
+    return
+  }
+  clearQueue()
+  try {
+    for (const key of await caches.keys()) if (key.startsWith('lm-')) await caches.delete(key)
+  } catch {}
+  signOut({ callbackUrl: '/login' })
 }
 
 export function AppShell({ user, children }: AppShellProps) {
@@ -114,7 +131,7 @@ export function AppShell({ user, children }: AppShellProps) {
             </Link>
             <span className="hidden text-sm text-muted sm:inline">{user.name}</span>
             <button
-              onClick={() => signOut({ callbackUrl: '/login' })}
+              onClick={signOutAndForget}
               className="rounded-lg p-2 text-muted hover:bg-hover"
               aria-label="Sign out"
               title="Sign out"

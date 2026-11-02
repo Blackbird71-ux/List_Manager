@@ -7,6 +7,16 @@ import { CLEAR_COMPLETION, completeChecklist, countRemainingItems } from '@/lib/
 import { logActivity } from '@/lib/activity'
 import { offsetDueDate } from '@/lib/conditions'
 import { deleteStoredFiles, storagePathsForItem } from '@/lib/attachment-files'
+import { CLEAR_ACTION } from '@/lib/corrective-actions'
+import { notify } from '@/lib/notifications'
+import { itemTypeFields, normalizeItemType, numberResult, validateValue } from '@/lib/item-types'
+import { offlineTimestamp } from '@/lib/offline-queue'
+
+const ANSWER_FIRST: Record<string, string> = {
+  number: 'Enter the reading first',
+  text: 'Enter the answer first',
+  signature: 'Sign first',
+}
 
 const patchSchema = z.object({
   text: z.string().trim().min(1).max(500).optional(),
@@ -19,6 +29,17 @@ const patchSchema = z.object({
   conditionItemId: z.string().nullable().optional(),
   conditionResult: z.enum(['', 'pass', 'fail', 'na']).optional(),
   dueOffsetDays: z.number().int().min(0).max(365).nullable().optional(),
+  // Corrective action (failed items only).
+  actionText: z.string().trim().max(2000).optional(),
+  actionAssignedToId: z.string().nullish(),
+  actionDueDate: z.iso.datetime().nullish(),
+  actionClosed: z.boolean().optional(),
+  actionCloseNote: z.string().trim().max(2000).optional(),
+  // Answer type settings and the typed answer itself.
+  ...itemTypeFields,
+  value: z.string().max(250_000).optional(),
+  // When a change queued offline was really made; ticks are stamped with it.
+  offlineAt: z.iso.datetime().optional(),
 })
 
 export async function PATCH(
@@ -43,16 +64,30 @@ export async function PATCH(
       checklistId: id,
       checklist: checklistAccessWhere(session.user.id, session.user.role, session.user.organizationId),
     },
-    select: { id: true, checked: true, checklist: { select: { dueDate: true } } },
+    select: {
+      id: true,
+      text: true,
+      checked: true,
+      result: true,
+      actionAssignedToId: true,
+      kind: true,
+      value: true,
+      unit: true,
+      minValue: true,
+      maxValue: true,
+      photoRequired: true,
+      checklist: { select: { dueDate: true, title: true } },
+    },
   })
   if (!item) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  // An item assignee must belong to the same organisation.
-  if (parsed.data.assignedToId) {
+  // Item and action assignees must belong to the same organisation.
+  for (const userId of [parsed.data.assignedToId, parsed.data.actionAssignedToId]) {
+    if (!userId) continue
     const assignee = await prisma.user.findFirst({
-      where: { id: parsed.data.assignedToId, organizationId: session.user.organizationId },
+      where: { id: userId, organizationId: session.user.organizationId },
       select: { id: true },
     })
     if (!assignee) {
@@ -69,11 +104,95 @@ export async function PATCH(
     if (!controller) return NextResponse.json({ error: 'Condition item not found' }, { status: 400 })
   }
 
-  const { checked: requestedChecked, priority, dueDate, assignedToId, ...scalars } = parsed.data
+  const {
+    checked: requestedChecked,
+    priority,
+    dueDate,
+    assignedToId,
+    actionText,
+    actionAssignedToId,
+    actionDueDate,
+    actionClosed,
+    actionCloseNote,
+    kind,
+    unit,
+    minValue,
+    maxValue,
+    photoRequired,
+    value,
+    offlineAt,
+    ...scalars
+  } = parsed.data
+  const data: Record<string, unknown> = {}
+
+  // Answer type. A new kind starts the item over; a typed answer ticks the item and
+  // clearing it unticks; a number reading sets pass/fail when it has a range.
+  const typeTouched = [kind, unit, minValue, maxValue, photoRequired].some((v) => v !== undefined)
+  const settings = normalizeItemType({
+    kind: kind ?? item.kind,
+    unit: unit ?? item.unit,
+    minValue: minValue === undefined ? item.minValue : minValue,
+    maxValue: maxValue === undefined ? item.maxValue : maxValue,
+    photoRequired: photoRequired ?? item.photoRequired,
+  })
+  if (typeTouched) Object.assign(data, settings)
+  const kindChanged = settings.kind !== item.kind
+  let implied: boolean | undefined
+  if (kindChanged) {
+    scalars.result ??= ''
+    if (item.checked) implied = false
+  }
+  let answer = value ?? (kindChanged ? '' : undefined)
+  if (requestedChecked === false) answer = ''
+  if (answer !== undefined) {
+    answer = settings.kind === 'signature' ? answer : answer.trim()
+    const invalid = validateValue(settings.kind, answer)
+    if (invalid) return NextResponse.json({ error: invalid }, { status: 400 })
+    data.value = answer
+    if (settings.kind !== 'check' && value !== undefined) implied = answer !== ''
+  }
+  const finalValue = answer ?? item.value
+  const hasRange = settings.minValue !== null || settings.maxValue !== null
+  if (settings.kind === 'number' && hasRange && finalValue && (answer !== undefined || typeTouched)) {
+    scalars.result = numberResult(finalValue, settings.minValue, settings.maxValue)
+  }
+
   // Recording a result counts as doing the item; unticking clears the result.
-  const checked = requestedChecked ?? (scalars.result && !item.checked ? true : undefined)
+  const checked = requestedChecked ?? implied ?? (scalars.result && !item.checked ? true : undefined)
   if (checked === false) scalars.result = ''
-  const data: Record<string, unknown> = { ...scalars }
+  if (checked === true && !item.checked) {
+    if (settings.kind !== 'check' && !finalValue) {
+      return NextResponse.json({ error: ANSWER_FIRST[settings.kind] }, { status: 400 })
+    }
+    if (settings.photoRequired) {
+      const photos = await prisma.attachment.count({ where: { itemId, mimeType: { startsWith: 'image/' } } })
+      if (photos === 0) return NextResponse.json({ error: 'Add a photo first' }, { status: 400 })
+    }
+  }
+  Object.assign(data, scalars)
+
+  // A new result starts a fresh corrective action (closed ones stay in the activity log).
+  const resultChanged = scalars.result !== undefined && scalars.result !== item.result
+  if (resultChanged) Object.assign(data, CLEAR_ACTION)
+  const touchesAction =
+    actionText !== undefined ||
+    actionAssignedToId !== undefined ||
+    actionDueDate !== undefined ||
+    actionClosed !== undefined
+  if (touchesAction && (scalars.result ?? item.result) !== 'fail') {
+    return NextResponse.json({ error: 'Only a failed item has a corrective action' }, { status: 400 })
+  }
+  if (actionClosed && !actionCloseNote) {
+    return NextResponse.json({ error: 'Say what was done to close the action' }, { status: 400 })
+  }
+  if (actionText !== undefined) data.actionText = actionText
+  if (actionAssignedToId !== undefined) data.actionAssignedToId = actionAssignedToId ?? null
+  if (actionDueDate !== undefined) data.actionDueDate = actionDueDate ? new Date(actionDueDate) : null
+  if (actionClosed !== undefined) {
+    data.actionClosedAt = actionClosed ? new Date() : null
+    data.actionClosedByName = actionClosed ? session.user.name : null
+    data.actionCloseNote = actionClosed ? actionCloseNote : ''
+  }
   if (priority !== undefined) data.priority = priority ?? null
   if (dueDate !== undefined) data.dueDate = dueDate ? new Date(dueDate) : null
   if (assignedToId !== undefined) data.assignedToId = assignedToId ?? null
@@ -85,7 +204,7 @@ export async function PATCH(
   if (checked !== undefined && checked !== item.checked) {
     data.checked = checked
     data.checkedByName = checked ? session.user.name : null
-    data.checkedAt = checked ? new Date() : null
+    data.checkedAt = checked ? offlineTimestamp(offlineAt) : null
   }
 
   const updated = await prisma.checklistItem.update({
@@ -93,6 +212,7 @@ export async function PATCH(
     data,
     include: {
       assignedTo: { select: { id: true, name: true, email: true } },
+      actionAssignedTo: { select: { id: true, name: true, email: true } },
       attachments: {
         select: { id: true, fileName: true, mimeType: true, size: true, createdAt: true },
       },
@@ -105,7 +225,28 @@ export async function PATCH(
   // A result or condition change can reveal or hide items, so re-check then too.
   const visibilityMayChange =
     scalars.result !== undefined || parsed.data.conditionItemId !== undefined || parsed.data.conditionResult !== undefined
-  if (checked === true) logActivity(id, session.user.name, 'item_checked', updated.text)
+  if (checked === true) {
+    const answered = updated.kind === 'number' || updated.kind === 'text'
+    const detail = answered ? `${updated.text}: ${updated.value.slice(0, 100)}${updated.unit ? ` ${updated.unit}` : ''}` : updated.text
+    logActivity(id, session.user.name, 'item_checked', detail)
+  }
+  if (actionClosed === true) logActivity(id, session.user.name, 'action_closed', `${updated.text}: ${actionCloseNote}`)
+  if (actionClosed === false) logActivity(id, session.user.name, 'action_reopened', updated.text)
+  const newActionOwner = updated.actionAssignedToId
+  if (
+    actionAssignedToId !== undefined &&
+    newActionOwner &&
+    newActionOwner !== item.actionAssignedToId &&
+    newActionOwner !== session.user.id
+  ) {
+    await notify(
+      newActionOwner,
+      'Corrective action assigned',
+      `${session.user.name} asked you to fix "${updated.text}" on "${item.checklist.title}".`,
+      id,
+      { email: true }
+    )
+  }
   if (checked === true || visibilityMayChange) {
     const remaining = await countRemainingItems(id)
     if (remaining === 0 && checked === true) {

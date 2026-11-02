@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { CheckCircle2, ChevronLeft, ChevronRight, Download, Lock, Search } from 'lucide-react'
 import type { ApiChecklist } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { hiddenItemIds } from '@/lib/conditions'
 
 export function CompletedClient() {
   const [checklists, setChecklists] = useState<ApiChecklist[]>([])
@@ -140,6 +141,8 @@ export function CompletedClient() {
               <div className="overflow-hidden rounded-xl border border-border bg-panel">
                 {lists.map((c, idx) => {
                   const done = c.items.filter((i) => i.checked).length
+                  const hidden = hiddenItemIds(c.items)
+                  const openActions = c.items.filter((i) => !hidden.has(i.id) && i.result === 'fail' && !i.actionClosedAt).length
                   return (
                     <Link
                       key={c.id}
@@ -157,6 +160,11 @@ export function CompletedClient() {
                           {c.assignedTo ? ` · ${c.assignedTo.name}` : ''}
                         </p>
                       </div>
+                      {openActions > 0 && (
+                        <span className="shrink-0 rounded-full bg-danger-soft px-2 py-0.5 text-[11px] font-semibold text-danger">
+                          {openActions} open action{openActions === 1 ? '' : 's'}
+                        </span>
+                      )}
                       {c.visibility === 'private' && (
                         <Lock className="h-3.5 w-3.5 shrink-0 text-faint" />
                       )}

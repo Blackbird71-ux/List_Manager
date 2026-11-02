@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import type { ApiChecklist, ApiTemplate, ApiUser } from '@/lib/types'
 import { DepartmentPicker } from '@/components/DepartmentPicker'
+import { GettingStartedCard } from '@/components/GettingStartedCard'
 import { cn } from '@/lib/utils'
 
 const PRIORITY_STYLES: Record<string, string> = {
@@ -37,7 +38,7 @@ interface SavedView {
   dueWindow: '' | 'today' | 'week'
 }
 
-export function DashboardClient({ currentUserId }: { currentUserId: string }) {
+export function DashboardClient({ currentUserId, role }: { currentUserId: string; role: string }) {
   const [checklists, setChecklists] = useState<ApiChecklist[]>([])
   const [completedTotal, setCompletedTotal] = useState(0)
   const [templates, setTemplates] = useState<ApiTemplate[]>([])
@@ -226,6 +227,13 @@ export function DashboardClient({ currentUserId }: { currentUserId: string }) {
 
   return (
     <div className="space-y-5">
+      <GettingStartedCard
+        isAdmin={role === 'admin'}
+        hasTemplates={templates.length > 0}
+        hasChecklists={checklists.length > 0 || completedTotal > 0}
+        hasTeam={users.length > 1}
+      />
+
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[

@@ -35,7 +35,6 @@ export function computeNextDueDate(currentDue: Date | null, recurrence: Recurren
     quarterly: { months: 3 },
     yearly: { years: 1 },
   }[recurrence]
-
   const today = startOfDayInTz()
   const anchor = currentDue ? startOfDayInTz(currentDue) : today
 
@@ -44,4 +43,21 @@ export function computeNextDueDate(currentDue: Date | null, recurrence: Recurren
     next = plusInTz(next, step)
   }
   return next
+}
+
+/**
+ * Due dates of the runs a recurring list will spawn after the current one,
+ * up to `until` (inclusive). The next run doesn't exist until the current one
+ * is completed, so these are a forecast for the calendar, not records. Chained
+ * through computeNextDueDate exactly as real spawns are, so the forecast
+ * matches what will actually be created (assuming on-time completion).
+ */
+export function projectOccurrences(currentDue: Date, recurrence: Recurrence, until: Date, max = 400): Date[] {
+  const out: Date[] = []
+  let next = computeNextDueDate(currentDue, recurrence)
+  while (next && next <= until && out.length < max) {
+    out.push(next)
+    next = computeNextDueDate(next, recurrence)
+  }
+  return out
 }

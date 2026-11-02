@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { checklistAccessWhere } from '@/lib/access'
+import { OPEN_ACTION } from '@/lib/corrective-actions'
 import { AppShell } from '@/components/AppShell'
 import { MyWorkClient } from '@/components/MyWorkClient'
 
@@ -31,7 +32,7 @@ export default async function MyWorkPage() {
   if (!session?.user?.id) redirect('/login')
 
   const access = checklistAccessWhere(session.user.id, session.user.role, session.user.organizationId)
-  const [items, checklists] = await Promise.all([
+  const [items, checklists, actions] = await Promise.all([
     prisma.checklistItem.findMany({
       where: {
         assignedToId: session.user.id,
@@ -56,6 +57,25 @@ export default async function MyWorkPage() {
         items: { select: { checked: true } },
       },
     }),
+    // Open corrective actions given to me, or unassigned ones on my lists — finished lists included,
+    // since that is where they usually sit waiting for sign-off.
+    prisma.checklistItem.findMany({
+      where: {
+        ...OPEN_ACTION,
+        OR: [{ actionAssignedToId: session.user.id }, { actionAssignedToId: null, checklist: { assignedToId: session.user.id } }],
+        checklist: access,
+      },
+      select: {
+        id: true,
+        text: true,
+        actionText: true,
+        actionDueDate: true,
+        actionAssignedToId: true,
+        checklist: { select: { id: true, title: true } },
+      },
+      orderBy: { actionDueDate: 'asc' },
+      take: 200,
+    }),
   ])
 
   const myItems = [...items].sort(compareWork).map((i) => ({
@@ -74,9 +94,21 @@ export default async function MyWorkPage() {
     total: c.items.length,
   }))
 
+  const myActions = actions
+    .map((a) => ({ ...a, dueDate: a.actionDueDate, priority: null }))
+    .sort(compareWork)
+    .map((a) => ({
+      id: a.id,
+      text: a.text,
+      actionText: a.actionText,
+      dueDate: a.dueDate?.toISOString() ?? null,
+      unassigned: !a.actionAssignedToId,
+      checklist: a.checklist,
+    }))
+
   return (
     <AppShell user={{ name: session.user.name, role: session.user.role }}>
-      <MyWorkClient items={myItems} checklists={myChecklists} />
+      <MyWorkClient items={myItems} checklists={myChecklists} actions={myActions} />
     </AppShell>
   )
 }

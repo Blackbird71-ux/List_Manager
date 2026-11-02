@@ -12,7 +12,8 @@ const bodySchema = z.object({
   mode: z.enum(['tick', 'pass', 'na']),
 })
 
-// Tick every remaining visible item in one go (e.g. "everything passed").
+// Tick every remaining visible item in one go (e.g. "everything passed"). Items that
+// need an answer, or a photo they don't have yet, are skipped and counted.
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -41,12 +42,25 @@ export async function POST(
 
   const items = await prisma.checklistItem.findMany({
     where: { checklistId: id },
-    select: { id: true, checked: true, result: true, conditionItemId: true, conditionResult: true },
+    select: {
+      id: true,
+      checked: true,
+      result: true,
+      conditionItemId: true,
+      conditionResult: true,
+      kind: true,
+      photoRequired: true,
+      _count: { select: { attachments: { where: { mimeType: { startsWith: 'image/' } } } } },
+    },
   })
   const hidden = hiddenItemIds(items)
-  const targets = items.filter((i) => !i.checked && !hidden.has(i.id)).map((i) => i.id)
+  const open = items.filter((i) => !i.checked && !hidden.has(i.id))
+  const targets = open
+    .filter((i) => i.kind === 'check' && (!i.photoRequired || i._count.attachments > 0))
+    .map((i) => i.id)
+  const skipped = open.length - targets.length
   if (targets.length === 0) {
-    return NextResponse.json({ updated: 0, checklistCompleted: false })
+    return NextResponse.json({ updated: 0, skipped, checklistCompleted: false })
   }
 
   await prisma.checklistItem.updateMany({
@@ -68,5 +82,5 @@ export async function POST(
     checklistCompleted = true
     logActivity(id, session.user.name, 'completed')
   }
-  return NextResponse.json({ updated: targets.length, checklistCompleted })
+  return NextResponse.json({ updated: targets.length, skipped, checklistCompleted })
 }

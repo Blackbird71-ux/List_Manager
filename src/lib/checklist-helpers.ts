@@ -7,6 +7,8 @@ import { formatInTz, todayStart } from '@/lib/timezone'
 import { copyChecklistAttachments } from '@/lib/attachment-files'
 import { hiddenItemIds, offsetDueDate } from '@/lib/conditions'
 import { randomUUID } from 'crypto'
+import { CLEAR_ACTION } from '@/lib/corrective-actions'
+import { normalizeItemType } from '@/lib/item-types'
 
 /**
  * Generate a Reminder record for a checklist if reminderOffsetHours is set
@@ -68,6 +70,7 @@ const checklistInclude = {
     orderBy: { sortOrder: 'asc' as const },
     include: {
       assignedTo: { select: { id: true, name: true, email: true } },
+      actionAssignedTo: { select: { id: true, name: true, email: true } },
       attachments: {
         select: { id: true, fileName: true, mimeType: true, size: true, createdAt: true },
       },
@@ -97,6 +100,11 @@ interface RunItemSource {
   conditionItemId?: string | null
   id?: string
   conditionResult: string
+  kind: string
+  unit: string
+  minValue: number | null
+  maxValue: number | null
+  photoRequired: boolean
 }
 
 /**
@@ -121,6 +129,7 @@ function runItemRows(items: RunItemSource[], dueDate: Date | null) {
       dueDate: offsetDueDate(dueDate, item.dueOffsetDays),
       conditionItemId: linked ? ids[controller] : null,
       conditionResult: linked ? item.conditionResult : '',
+      ...normalizeItemType(item),
     }
   })
 }
@@ -383,7 +392,7 @@ export async function resetChecklist(checklistId: string): Promise<boolean> {
   await prisma.$transaction([
     prisma.checklistItem.updateMany({
       where: { checklistId },
-      data: { checked: false, result: '', checkedByName: null, checkedAt: null },
+      data: { checked: false, result: '', value: '', checkedByName: null, checkedAt: null, ...CLEAR_ACTION },
     }),
     prisma.checklist.update({
       where: { id: checklistId },

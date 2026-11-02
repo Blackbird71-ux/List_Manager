@@ -23,7 +23,7 @@ There is no `middleware.ts`; a route without its own check is public.
 3. Settings routes use `requirePrimaryAdmin` (`src/app/api/settings/drive-backup/guard`). The Drive OAuth callback is guarded too and checks its state cookie.
 4. Every query is scoped to `organizationId` — `findFirst({ where: { id, organizationId } })`, never bare `findUnique({ where: { id } })`.
 5. Scheduler routes (`api/scheduler/*`) accept the `x-digest-secret` header (`DIGEST_SECRET`, constant-time compare) **or** a session — keep both paths.
-6. **Known public routes** (anything else new needs user sign-off): `auth/[...nextauth]`, `health` (status only — no paths, versions, raw errors), `register`, `password-reset/request`, `password-reset/confirm`.
+6. **Known public routes** (anything else new needs user sign-off): `auth/[...nextauth]`, `health` (status only — no paths, versions, raw errors), `register`, `password-reset/request`, `password-reset/confirm`, `calendar/feed/[token]` (per-user secret token, hashed in `User.calendarTokenHash`; scoped by `checklistAccessWhere`; rate-limited).
 7. After touching routes, sweep — every hit must be on the public list:
    ```
    rg --files-without-match "auth\(\)|requirePrimaryAdmin" -g "route.ts" src/app/api

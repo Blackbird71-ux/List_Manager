@@ -84,10 +84,15 @@ model User {
   resetTokenHash      String?
   resetTokenExpiresAt DateTime?
 
+  // iCal subscription feed: sha256 of the secret token in the feed URL.
+  calendarTokenHash      String?   @unique
+  calendarTokenCreatedAt DateTime?
+
   createdTemplates  Template[]      @relation("TemplateCreator")
   createdChecklists Checklist[]     @relation("ChecklistCreator")
   assignedChecklists Checklist[]    @relation("ChecklistAssignee")
   assignedItems     ChecklistItem[] @relation("ItemAssignee")
+  assignedActions   ChecklistItem[] @relation("ActionAssignee")
   notifications     Notification[]
   attachments       Attachment[]
   checklistShares   ChecklistShare[]
@@ -179,6 +184,12 @@ model TemplateItem {
   conditionResult String  @default("")
   // Due this many days before the checklist's due date.
   dueOffsetDays   Int?
+  // Answer type: "check" | "number" | "text" | "signature" (see src/lib/item-types.ts).
+  kind            String  @default("check")
+  unit            String  @default("")
+  minValue        Float?
+  maxValue        Float?
+  photoRequired   Boolean @default(false)
 
   @@index([templateId])
 }
@@ -354,11 +365,32 @@ model ChecklistItem {
   conditionResult String  @default("")
   dueOffsetDays   Int?
 
+  // Answer type (see src/lib/item-types.ts). value holds the typed answer: a number
+  // as text, free text, or a PNG data URL for a signature. A number outside
+  // [minValue, maxValue] sets result "fail".
+  kind          String  @default("check")
+  value         String  @default("")
+  unit          String  @default("")
+  minValue      Float?
+  maxValue      Float?
+  photoRequired Boolean @default(false)
+
+  // Corrective action for a failed item. Open = result "fail" and actionClosedAt
+  // null; open actions block sign-off. Cleared whenever the result changes.
+  actionText         String    @default("")
+  actionAssignedToId String?
+  actionAssignedTo   User?     @relation("ActionAssignee", fields: [actionAssignedToId], references: [id])
+  actionDueDate      DateTime?
+  actionClosedAt     DateTime?
+  actionClosedByName String?
+  actionCloseNote    String    @default("")
+
   attachments Attachment[]
 
   @@index([checklistId])
   @@index([assignedToId])
   @@index([parentId])
+  @@index([actionAssignedToId])
 }
 
 model CustomFieldValue {

@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   Archive,
@@ -12,13 +13,17 @@ import {
   Pencil,
   Play,
   Plus,
+  QrCode,
   RefreshCw,
+  Sparkles,
   Trash2,
   Upload,
 } from 'lucide-react'
 import type { ApiTemplate, ApiUser } from '@/lib/types'
 import { DepartmentPicker } from '@/components/DepartmentPicker'
 import { cn } from '@/lib/utils'
+import { ITEM_KINDS, ITEM_KIND_LABELS } from '@/lib/item-types'
+import { STARTER_TEMPLATES } from '@/lib/starter-templates'
 
 const RECURRENCES = ['none', 'daily', 'weekly', 'fortnightly', 'monthly', 'quarterly', 'yearly']
 
@@ -34,6 +39,12 @@ interface DraftItem {
   condUid?: string // row this item depends on (must be above it)
   condResult?: string
   offset?: string // due this many days before the checklist's due date
+  // Answer type; unit and range apply to number items only.
+  kind?: string
+  unit?: string
+  min?: string
+  max?: string
+  photo?: boolean
 }
 
 let uidCounter = 0
@@ -55,6 +66,11 @@ function itemsToRows(
     conditionIndex?: number | null
     conditionResult?: string
     dueOffsetDays?: number | null
+    kind?: string
+    unit?: string
+    minValue?: number | null
+    maxValue?: number | null
+    photoRequired?: boolean
   }[]
 ): DraftItem[] {
   const rows: DraftItem[] = []
@@ -73,6 +89,11 @@ function itemsToRows(
       condUid: i.conditionIndex != null ? uids[i.conditionIndex] : undefined,
       condResult: i.conditionResult || undefined,
       offset: i.dueOffsetDays != null ? String(i.dueOffsetDays) : '',
+      kind: i.kind ?? 'check',
+      unit: i.unit ?? '',
+      min: i.minValue != null ? String(i.minValue) : '',
+      max: i.maxValue != null ? String(i.maxValue) : '',
+      photo: i.photoRequired ?? false,
     })
   })
   return rows
@@ -97,6 +118,7 @@ export function TemplatesClient({ userId, role }: { userId: string; role: string
   const [importError, setImportError] = useState('')
   const [importing, setImporting] = useState(false)
   const [imported, setImported] = useState<ImportedDraft | null>(null)
+  const [showStarters, setShowStarters] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
@@ -108,6 +130,11 @@ export function TemplatesClient({ userId, role }: { userId: string; role: string
   useEffect(() => {
     load()
   }, [load])
+
+  // The dashboard's getting-started card links here with ?starters=1.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('starters') === '1') setShowStarters(true)
+  }, [])
 
   async function toggleArchive(t: ApiTemplate) {
     await fetch(`/api/templates/${t.id}`, {
@@ -186,7 +213,7 @@ export function TemplatesClient({ userId, role }: { userId: string; role: string
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-lg font-semibold">Templates</h1>
         <label className="ml-2 flex items-center gap-1.5 text-sm text-muted">
           <input
@@ -197,8 +224,14 @@ export function TemplatesClient({ userId, role }: { userId: string; role: string
           Show archived
         </label>
         <button
-          onClick={exportTemplates}
+          onClick={() => setShowStarters(true)}
           className="ml-auto flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-muted hover:bg-hover"
+        >
+          <Sparkles className="h-4 w-4" /> Starters
+        </button>
+        <button
+          onClick={exportTemplates}
+          className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-muted hover:bg-hover"
         >
           <Download className="h-4 w-4" /> Export
         </button>
@@ -231,8 +264,25 @@ export function TemplatesClient({ userId, role }: { userId: string; role: string
       {importError && <p className="text-sm text-danger">{importError}</p>}
 
       {visible.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border py-16 text-center text-sm text-faint">
-          No templates yet. Create one to get started.
+        <div className="rounded-xl border border-dashed border-border px-4 py-12 text-center">
+          <p className="text-sm text-faint">
+            {templates.length === 0 ? 'No templates yet.' : 'No active templates — tick "Show archived" to see the rest.'}
+          </p>
+          <p className="mt-1 text-sm text-faint">Start from a ready-made one and change it to suit, or build your own.</p>
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            <button
+              onClick={() => setShowStarters(true)}
+              className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-accent-ink hover:bg-accent-2"
+            >
+              <Sparkles className="h-4 w-4" /> Browse starter templates
+            </button>
+            <button
+              onClick={() => setEditing('new')}
+              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-hover"
+            >
+              <Plus className="h-4 w-4" /> Create your own
+            </button>
+          </div>
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -263,6 +313,13 @@ export function TemplatesClient({ userId, role }: { userId: string; role: string
                   >
                     <History className="h-4 w-4" />
                   </button>
+                  <Link
+                    href={`/templates/${t.id}/qr`}
+                    className="rounded p-1.5 text-muted hover:bg-hover"
+                    title="QR label — print and stick it where the work happens"
+                  >
+                    <QrCode className="h-4 w-4" />
+                  </Link>
                   {canEdit(t) && (
                     <button
                       onClick={() => toggleArchive(t)}
@@ -331,6 +388,17 @@ export function TemplatesClient({ userId, role }: { userId: string; role: string
         />
       )}
 
+      {showStarters && (
+        <StarterTemplatesModal
+          existingTitles={new Set(templates.filter((t) => !t.archived).map((t) => t.title))}
+          onClose={() => setShowStarters(false)}
+          onAdded={() => {
+            setShowStarters(false)
+            load()
+          }}
+        />
+      )}
+
       {starting && <StartChecklistModal template={starting} onClose={() => setStarting(null)} />}
 
       {historyFor && (
@@ -343,6 +411,123 @@ export function TemplatesClient({ userId, role }: { userId: string; role: string
           }}
         />
       )}
+    </div>
+  )
+}
+
+function StarterTemplatesModal({
+  existingTitles,
+  onClose,
+  onAdded,
+}: {
+  existingTitles: Set<string>
+  onClose: () => void
+  onAdded: () => void
+}) {
+  const [chosen, setChosen] = useState<Set<string>>(new Set())
+  const [open, setOpen] = useState<string | null>(null)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  function toggle(key: string) {
+    const next = new Set(chosen)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    setChosen(next)
+  }
+
+  async function add() {
+    setBusy(true)
+    setError('')
+    try {
+      const res = await fetch('/api/templates/starters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keys: [...chosen] }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setError(data.error ?? 'Could not add the templates')
+        return
+      }
+      onAdded()
+    } catch {
+      setError('Could not add the templates — check your connection.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl border border-border bg-panel p-5">
+        <h2 className="font-semibold">Starter templates</h2>
+        <p className="mt-0.5 text-sm text-muted">
+          Pick the ones that fit. They&apos;re added as normal templates you can rename and edit.
+        </p>
+        <ul className="mt-4 space-y-2">
+          {STARTER_TEMPLATES.map((s) => {
+            const added = existingTitles.has(s.title)
+            return (
+              <li key={s.key} className="rounded-lg border border-border-soft p-3">
+                <label className={cn('flex items-start gap-2.5', added ? 'opacity-60' : 'cursor-pointer')}>
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={added || chosen.has(s.key)}
+                    disabled={added}
+                    onChange={() => toggle(s.key)}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="font-medium">{s.title}</span>
+                    {added && <span className="ml-1.5 text-xs text-accent">already added</span>}
+                    <span className="block text-sm text-muted">{s.description}</span>
+                    <span className="mt-1 block text-xs text-muted">
+                      {s.items.length} items
+                      {s.recurrence !== 'none' && ` · repeats ${s.recurrence}`}
+                      {s.requiresSignOff && ' · needs sign-off'}
+                    </span>
+                  </span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setOpen(open === s.key ? null : s.key)}
+                  className="mt-1 ml-6 text-xs text-accent hover:underline"
+                >
+                  {open === s.key ? 'Hide items' : 'Show items'}
+                </button>
+                {open === s.key && (
+                  <ul className="mt-1 ml-6 space-y-0.5 text-sm text-muted">
+                    {s.items.map((i, n) => (
+                      <li key={n}>
+                        {i.section && i.section !== s.items[n - 1]?.section ? `${i.section}: ` : ''}
+                        {i.text}
+                        {i.kind && i.kind !== 'check' && (
+                          <span className="text-xs text-faint"> — {ITEM_KIND_LABELS[i.kind].toLowerCase()}</span>
+                        )}
+                        {i.photoRequired && <span className="text-xs text-faint"> — photo</span>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+        {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+        <div className="mt-4 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-hover">
+            Cancel
+          </button>
+          <button
+            onClick={add}
+            disabled={busy || chosen.size === 0}
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-ink hover:bg-accent-2 disabled:opacity-50"
+          >
+            {busy ? 'Adding…' : chosen.size > 1 ? `Add ${chosen.size} templates` : 'Add template'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -660,6 +845,7 @@ function TemplateEditor({
     try {
       let section = ''
       const uidToIdx = new Map<string, number>()
+      const bound = (v?: string) => (v?.trim() && Number.isFinite(Number(v)) ? Number(v) : null)
       const body = {
         title: title.trim(),
         description: description.trim(),
@@ -675,6 +861,11 @@ function TemplateEditor({
             conditionIndex: number | null
             conditionResult: string
             dueOffsetDays: number | null
+            kind: string
+            unit: string
+            minValue: number | null
+            maxValue: number | null
+            photoRequired: boolean
           }[]
         >(
           (acc, row) => {
@@ -694,6 +885,11 @@ function TemplateEditor({
                 conditionIndex: controller ?? null,
                 conditionResult: controller != null ? row.condResult || 'fail' : '',
                 dueOffsetDays: days != null && Number.isFinite(days) ? days : null,
+                kind: row.kind ?? 'check',
+                unit: row.kind === 'number' ? (row.unit ?? '').trim() : '',
+                minValue: row.kind === 'number' ? bound(row.min) : null,
+                maxValue: row.kind === 'number' ? bound(row.max) : null,
+                photoRequired: !!row.photo,
               })
             }
             return acc
@@ -912,6 +1108,70 @@ function TemplateEditor({
                     className="w-14 rounded border border-border bg-field px-1.5 py-1 text-xs"
                   />
                   <span>days before list</span>
+                </div>
+              )}
+              {!item.heading && (
+                <div className="mt-1 flex flex-wrap items-center gap-2 pl-1 text-xs text-muted">
+                  <span>Answer</span>
+                  <select
+                    value={item.kind ?? 'check'}
+                    onChange={(e) =>
+                      setItems(items.map((it, i) => (i === idx ? { ...it, kind: e.target.value } : it)))
+                    }
+                    className="rounded border border-border bg-field px-1.5 py-1 text-xs"
+                  >
+                    {ITEM_KINDS.map((k) => (
+                      <option key={k} value={k}>
+                        {ITEM_KIND_LABELS[k]}
+                      </option>
+                    ))}
+                  </select>
+                  {item.kind === 'number' && (
+                    <>
+                      <input
+                        value={item.unit ?? ''}
+                        onChange={(e) =>
+                          setItems(items.map((it, i) => (i === idx ? { ...it, unit: e.target.value } : it)))
+                        }
+                        maxLength={20}
+                        placeholder="unit, e.g. °C"
+                        className="w-24 rounded border border-border bg-field px-1.5 py-1 text-xs"
+                      />
+                      <span title="Readings outside this range fail the item">OK from</span>
+                      <input
+                        type="number"
+                        step="any"
+                        value={item.min ?? ''}
+                        onChange={(e) =>
+                          setItems(items.map((it, i) => (i === idx ? { ...it, min: e.target.value } : it)))
+                        }
+                        placeholder="min"
+                        className="w-16 rounded border border-border bg-field px-1.5 py-1 text-xs"
+                      />
+                      <span>to</span>
+                      <input
+                        type="number"
+                        step="any"
+                        value={item.max ?? ''}
+                        onChange={(e) =>
+                          setItems(items.map((it, i) => (i === idx ? { ...it, max: e.target.value } : it)))
+                        }
+                        placeholder="max"
+                        className="w-16 rounded border border-border bg-field px-1.5 py-1 text-xs"
+                      />
+                    </>
+                  )}
+                  <label className="ml-auto flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      checked={!!item.photo}
+                      onChange={(e) =>
+                        setItems(items.map((it, i) => (i === idx ? { ...it, photo: e.target.checked } : it)))
+                      }
+                      className="h-3.5 w-3.5 accent-accent"
+                    />
+                    Photo required
+                  </label>
                 </div>
               )}
               </div>

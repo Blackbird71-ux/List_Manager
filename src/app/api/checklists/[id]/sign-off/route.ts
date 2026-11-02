@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma'
 import { checklistAccessWhere } from '@/lib/access'
 import { CLEAR_COMPLETION, spawnAfterSignOff } from '@/lib/checklist-helpers'
 import { checkSignOff } from '@/lib/sign-off'
+import { countOpenActions } from '@/lib/corrective-actions'
 import { notify } from '@/lib/notifications'
 import { logActivity } from '@/lib/activity'
 
@@ -47,7 +48,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  const check = checkSignOff(checklist, session.user)
+  const check = checkSignOff({ ...checklist, openActions: await countOpenActions(id) }, session.user, decision)
   if (!check.ok) {
     return NextResponse.json({ error: check.error }, { status: check.status })
   }

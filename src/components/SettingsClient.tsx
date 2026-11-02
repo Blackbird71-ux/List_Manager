@@ -10,6 +10,7 @@ import { EscalationSection } from '@/components/EscalationSection'
 import { WebhookSection } from '@/components/WebhookSection'
 import { PushSection } from '@/components/PushSection'
 import { EmailRemindersSection } from '@/components/EmailRemindersSection'
+import { CalendarFeedSection } from '@/components/CalendarFeedSection'
 
 type Theme = 'light' | 'iris' | 'dark'
 
@@ -90,6 +91,7 @@ export function SettingsClient({
       {/* Push notifications (per device, everyone) */}
       <PushSection />
       <EmailRemindersSection />
+      <CalendarFeedSection />
 
       {/* Instance-wide settings — only primary-organisation admins */}
       {isPrimaryAdmin && <RegistrationSection />}

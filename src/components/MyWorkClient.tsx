@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Calendar, ClipboardList, ListChecks } from 'lucide-react'
+import { Calendar, ClipboardList, ListChecks, Wrench } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const PRIORITY_STYLES: Record<string, string> = {
@@ -27,6 +27,15 @@ export interface MyWorkChecklist {
   total: number
 }
 
+export interface MyWorkAction {
+  id: string
+  text: string
+  actionText: string
+  dueDate: string | null
+  unassigned: boolean
+  checklist: { id: string; title: string }
+}
+
 function isOverdue(dueDate: string | null) {
   return dueDate !== null && new Date(dueDate) < new Date()
 }
@@ -34,13 +43,53 @@ function isOverdue(dueDate: string | null) {
 export function MyWorkClient({
   items,
   checklists,
+  actions,
 }: {
   items: MyWorkItem[]
   checklists: MyWorkChecklist[]
+  actions: MyWorkAction[]
 }) {
   return (
     <div className="space-y-6">
       <h1 className="text-lg font-semibold">My Work</h1>
+
+      {actions.length > 0 && (
+        <section>
+          <h2 className="mb-2 text-sm font-semibold text-muted">Corrective actions</h2>
+          <div className="divide-y divide-border rounded-xl border border-danger/30 bg-panel">
+            {actions.map((a) => (
+              <Link
+                key={a.id}
+                href={`/checklists/${a.checklist.id}`}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 p-3 hover:bg-hover"
+              >
+                <Wrench className="h-4 w-4 shrink-0 text-danger" />
+                <span className="text-sm text-ink">
+                  <span className="font-medium">{a.text}</span>
+                  <span className="text-muted"> — {a.actionText || 'no action written yet'}</span>
+                </span>
+                {a.unassigned && (
+                  <span className="rounded-full bg-hover px-2 py-0.5 text-[11px] font-semibold text-muted">
+                    unassigned
+                  </span>
+                )}
+                {a.dueDate && (
+                  <span
+                    className={cn(
+                      'flex items-center gap-1 text-xs text-muted',
+                      isOverdue(a.dueDate) && 'font-semibold text-danger'
+                    )}
+                  >
+                    <Calendar className="h-3 w-3" />
+                    {new Date(a.dueDate).toLocaleDateString()}
+                  </span>
+                )}
+                <span className="ml-auto text-xs text-accent">{a.checklist.title}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section>
         <h2 className="mb-2 text-sm font-semibold text-muted">My items</h2>

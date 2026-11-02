@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { normalizeItemType } from '@/lib/item-types'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
@@ -46,6 +47,7 @@ export async function GET() {
         conditionIndex: i.conditionIndex,
         conditionResult: i.conditionResult,
         dueOffsetDays: i.dueOffsetDays,
+        ...normalizeItemType(i),
         sortOrder: i.sortOrder,
       })),
       customFields: t.customFields.map((f) => ({

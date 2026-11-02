@@ -1,6 +1,6 @@
 import { DateTime, Settings } from 'luxon'
 import { afterEach, describe, expect, it } from 'vitest'
-import { computeNextDueDate, isRecurrence, RECURRENCE_OPTIONS } from '@/lib/recurrence'
+import { computeNextDueDate, isRecurrence, projectOccurrences, RECURRENCE_OPTIONS } from '@/lib/recurrence'
 import { APP_TIMEZONE } from '@/lib/timezone'
 
 // Pin "now" to a fixed instant: 2026-07-14 10:00 in Australia/Sydney
@@ -82,5 +82,28 @@ describe('computeNextDueDate', () => {
     Settings.now = () => january
     const due = sydneyDate('2026-01-31')
     expect(asSydneyISODate(computeNextDueDate(due, 'monthly'))).toBe('2026-02-28')
+  })
+})
+
+describe('projectOccurrences', () => {
+  it('forecasts weekly runs after the current one, up to the horizon', () => {
+    const runs = projectOccurrences(sydneyDate('2026-07-20'), 'weekly', sydneyDate('2026-08-10'))
+    expect(runs.map(asSydneyISODate)).toEqual(['2026-07-27', '2026-08-03', '2026-08-10'])
+  })
+
+  it('starts after today for an overdue list, as the real spawn would', () => {
+    const runs = projectOccurrences(sydneyDate('2026-07-01'), 'weekly', sydneyDate('2026-07-31'))
+    expect(runs.map(asSydneyISODate)).toEqual(['2026-07-15', '2026-07-22', '2026-07-29'])
+  })
+
+  it('stays on local midnight across the October DST change', () => {
+    const runs = projectOccurrences(sydneyDate('2026-09-28'), 'weekly', sydneyDate('2026-10-12'))
+    expect(runs.map(asSydneyISODate)).toEqual(['2026-10-05', '2026-10-12'])
+    for (const r of runs) expect(DateTime.fromJSDate(r).setZone(APP_TIMEZONE).hour).toBe(0)
+  })
+
+  it('returns nothing for a one-off list and caps a daily list', () => {
+    expect(projectOccurrences(sydneyDate('2026-07-20'), 'none', sydneyDate('2027-07-20'))).toEqual([])
+    expect(projectOccurrences(sydneyDate('2026-07-20'), 'daily', sydneyDate('2030-01-01'), 50)).toHaveLength(50)
   })
 })

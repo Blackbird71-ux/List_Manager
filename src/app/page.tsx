@@ -9,7 +9,7 @@ export default async function DashboardPage() {
 
   return (
     <AppShell user={{ name: session.user.name, role: session.user.role }}>
-      <DashboardClient currentUserId={session.user.id} />
+      <DashboardClient currentUserId={session.user.id} role={session.user.role} />
     </AppShell>
   )
 }

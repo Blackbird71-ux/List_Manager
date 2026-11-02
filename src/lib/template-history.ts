@@ -1,7 +1,9 @@
 import type { Prisma } from '@prisma/client'
+import { normalizeItemType, type ItemTypeSettings } from '@/lib/item-types'
 
 export interface TemplateSnapshot {
-  items: {
+  // Snapshots taken before answer types existed lack those fields and restore as tick boxes.
+  items: ({
     text: string
     priority: string | null
     section: string
@@ -9,7 +11,7 @@ export interface TemplateSnapshot {
     conditionIndex: number | null
     conditionResult: string
     dueOffsetDays: number | null
-  }[]
+  } & Partial<ItemTypeSettings>)[]
   customFields: { name: string; type: string; options: string[]; required: boolean }[]
 }
 
@@ -22,6 +24,11 @@ type SnapshotSource = {
     conditionIndex: number | null
     conditionResult: string
     dueOffsetDays: number | null
+    kind?: string
+    unit?: string
+    minValue?: number | null
+    maxValue?: number | null
+    photoRequired?: boolean
   }[]
   customFields: { name: string; type: string; options: string; required: boolean }[]
 }
@@ -37,6 +44,7 @@ export function buildSnapshot(t: SnapshotSource): TemplateSnapshot {
       conditionIndex: i.conditionIndex,
       conditionResult: i.conditionResult,
       dueOffsetDays: i.dueOffsetDays,
+      ...normalizeItemType(i),
     })),
     customFields: t.customFields.map((f) => {
       let options: string[] = []
