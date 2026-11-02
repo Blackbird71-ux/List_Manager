@@ -3,6 +3,8 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { checklistAccessWhere } from '@/lib/access'
 import { OPEN_ACTION } from '@/lib/corrective-actions'
+import { withoutHiddenItems } from '@/lib/checklist-helpers'
+import { visibleProgress } from '@/lib/conditions'
 import { AppShell } from '@/components/AppShell'
 import { MyWorkClient } from '@/components/MyWorkClient'
 
@@ -32,7 +34,7 @@ export default async function MyWorkPage() {
   if (!session?.user?.id) redirect('/login')
 
   const access = checklistAccessWhere(session.user.id, session.user.role, session.user.organizationId)
-  const [items, checklists, actions] = await Promise.all([
+  const [allItems, checklists, allActions] = await Promise.all([
     prisma.checklistItem.findMany({
       where: {
         assignedToId: session.user.id,
@@ -41,6 +43,7 @@ export default async function MyWorkPage() {
       },
       select: {
         id: true,
+        checklistId: true,
         text: true,
         priority: true,
         dueDate: true,
@@ -54,7 +57,7 @@ export default async function MyWorkPage() {
         title: true,
         priority: true,
         dueDate: true,
-        items: { select: { checked: true } },
+items: { select: { id: true, checked: true, result: true, conditionItemId: true, conditionResult: true } },
       },
     }),
     // Open corrective actions given to me, or unassigned ones on my lists — finished lists included,
@@ -67,6 +70,7 @@ export default async function MyWorkPage() {
       },
       select: {
         id: true,
+        checklistId: true,
         text: true,
         actionText: true,
         actionDueDate: true,
@@ -77,6 +81,7 @@ export default async function MyWorkPage() {
       take: 200,
     }),
   ])
+  const [items, actions] = await Promise.all([withoutHiddenItems(allItems), withoutHiddenItems(allActions)])
 
   const myItems = [...items].sort(compareWork).map((i) => ({
     id: i.id,
@@ -90,8 +95,7 @@ export default async function MyWorkPage() {
     title: c.title,
     priority: c.priority,
     dueDate: c.dueDate?.toISOString() ?? null,
-    done: c.items.filter((i) => i.checked).length,
-    total: c.items.length,
+    ...visibleProgress(c.items),
   }))
 
   const myActions = actions

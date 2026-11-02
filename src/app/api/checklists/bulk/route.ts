@@ -4,7 +4,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { canManageChecklist, checklistAccessWhere } from '@/lib/access'
 import { logActivity } from '@/lib/activity'
-import { completeChecklist } from '@/lib/checklist-helpers'
+import { collectReminderUserIds, completeChecklist, generateRemindersForChecklist, syncItemDueDates } from '@/lib/checklist-helpers'
 
 const BULK_ACTIONS = ['assign', 'priority', 'dueDate', 'complete', 'delete'] as const
 
@@ -85,10 +85,18 @@ export async function POST(request: Request) {
 
         case 'dueDate': {
           if (!data?.dueDate) continue
-          await prisma.checklist.update({
+          const updated = await prisma.checklist.update({
             where: { id: cl.id },
             data: { dueDate: new Date(data.dueDate) },
+            select: { dueDate: true, reminderOffsetHours: true },
           })
+          await syncItemDueDates(cl.id, updated.dueDate)
+          generateRemindersForChecklist(
+            cl.id,
+            updated.dueDate,
+            updated.reminderOffsetHours,
+            await collectReminderUserIds(cl.id)
+          ).catch((err) => console.error('Reminder generation failed:', err))
           logActivity(cl.id, session.user.name, 'edited', `Bulk due date changed`)
           success++
           break

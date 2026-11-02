@@ -4,7 +4,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { RECURRENCE_OPTIONS } from '@/lib/recurrence'
 import { canAccessChecklist, canManageChecklist, checklistAccessWhere } from '@/lib/access'
-import { CLEAR_COMPLETION, completeChecklist, getChecklistInclude, generateRemindersForChecklist, collectReminderUserIds } from '@/lib/checklist-helpers'
+import { CLEAR_COMPLETION, completeChecklist, getChecklistInclude, generateRemindersForChecklist, collectReminderUserIds, syncItemDueDates } from '@/lib/checklist-helpers'
 import { notify } from '@/lib/notifications'
 import { logActivity } from '@/lib/activity'
 import { deleteStoredFiles, storagePathsForChecklist } from '@/lib/attachment-files'
@@ -182,6 +182,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
 
   await prisma.checklist.update({ where: { id }, data })
+  if (dueDate !== undefined) await syncItemDueDates(id, data.dueDate as Date | null)
 
   // Regenerate reminders if dueDate or reminderOffsetHours changed
   if (dueDate !== undefined || reminderOffsetHours !== undefined) {

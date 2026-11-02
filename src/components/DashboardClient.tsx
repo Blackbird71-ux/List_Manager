@@ -19,6 +19,7 @@ import type { ApiChecklist, ApiTemplate, ApiUser } from '@/lib/types'
 import { DepartmentPicker } from '@/components/DepartmentPicker'
 import { GettingStartedCard } from '@/components/GettingStartedCard'
 import { cn } from '@/lib/utils'
+import { visibleProgress } from '@/lib/conditions'
 
 const PRIORITY_STYLES: Record<string, string> = {
   high: 'bg-danger-soft text-danger',
@@ -450,8 +451,7 @@ export function DashboardClient({ currentUserId, role }: { currentUserId: string
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
           {filtered.map((c) => {
-            const done = c.items.filter((i) => i.checked).length
-            const total = c.items.length
+            const { done, total } = visibleProgress(c.items)
             const pct = total > 0 ? Math.round((done / total) * 100) : 0
             const overdue =
               c.status === 'active' && c.dueDate && new Date(c.dueDate) < new Date()

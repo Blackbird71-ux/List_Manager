@@ -134,6 +134,41 @@ function runItemRows(items: RunItemSource[], dueDate: Date | null) {
   })
 }
 
+/**
+ * Drop items a condition currently hides: a list that doesn't show an item
+ * isn't asking anyone to do it. Only lists that use conditions are loaded.
+ */
+export async function withoutHiddenItems<T extends { id: string; checklistId: string }>(items: T[]): Promise<T[]> {
+  if (items.length === 0) return items
+  const siblings = await prisma.checklistItem.findMany({
+    where: {
+      checklistId: { in: [...new Set(items.map((i) => i.checklistId))] },
+      checklist: { items: { some: { conditionItemId: { not: null } } } },
+    },
+    select: { id: true, result: true, conditionItemId: true, conditionResult: true },
+  })
+  const hidden = hiddenItemIds(siblings)
+  return hidden.size === 0 ? items : items.filter((i) => !hidden.has(i.id))
+}
+
+/** Items timed relative to the list follow its due date; with no list due date they have none. */
+export async function syncItemDueDates(checklistId: string, dueDate: Date | null): Promise<void> {
+  const offsets = await prisma.checklistItem.findMany({
+    where: { checklistId, dueOffsetDays: { not: null } },
+    select: { dueOffsetDays: true },
+    distinct: ['dueOffsetDays'],
+  })
+  if (offsets.length === 0) return
+  await prisma.$transaction(
+    offsets.map(({ dueOffsetDays }) =>
+      prisma.checklistItem.updateMany({
+        where: { checklistId, dueOffsetDays },
+        data: { dueDate: offsetDueDate(dueDate, dueOffsetDays) },
+      })
+    )
+  )
+}
+
 /** Unticked items still to do, ignoring ones hidden by a condition. */
 export async function countRemainingItems(checklistId: string): Promise<number> {
   const items = await prisma.checklistItem.findMany({

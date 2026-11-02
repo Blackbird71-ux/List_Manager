@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'crypto'
 import { prisma } from '@/lib/prisma'
 import { checklistAccessWhere } from '@/lib/access'
 import { OPEN_ACTION } from '@/lib/corrective-actions'
+import { withoutHiddenItems } from '@/lib/checklist-helpers'
 import { isRecurrence, projectOccurrences } from '@/lib/recurrence'
 import { formatInTzPattern, plusInTz, todayStart } from '@/lib/timezone'
 
@@ -26,22 +27,23 @@ export const PROJECTION_MONTHS = 12
  */
 export async function getCalendarEvents(user: { id: string; role: string; organizationId: string }): Promise<CalendarEvent[]> {
   const access = checklistAccessWhere(user.id, user.role, user.organizationId)
-  const [lists, items, actions] = await Promise.all([
+  const [lists, allItems, allActions] = await Promise.all([
     prisma.checklist.findMany({
       where: { status: 'active', dueDate: { not: null }, ...access },
       select: { id: true, title: true, dueDate: true, recurrence: true },
     }),
     prisma.checklistItem.findMany({
       where: { checked: false, dueDate: { not: null }, checklist: { status: 'active', ...access } },
-      select: { id: true, text: true, dueDate: true, checklist: { select: { id: true, title: true } } },
+      select: { id: true, checklistId: true, text: true, dueDate: true, checklist: { select: { id: true, title: true } } },
       take: 2000,
     }),
     prisma.checklistItem.findMany({
       where: { ...OPEN_ACTION, actionDueDate: { not: null }, checklist: access },
-      select: { id: true, text: true, actionDueDate: true, checklist: { select: { id: true, title: true } } },
+      select: { id: true, checklistId: true, text: true, actionDueDate: true, checklist: { select: { id: true, title: true } } },
       take: 2000,
     }),
   ])
+  const [items, actions] = await Promise.all([withoutHiddenItems(allItems), withoutHiddenItems(allActions)])
 
   const until = plusInTz(todayStart(), { months: PROJECTION_MONTHS })
   return [

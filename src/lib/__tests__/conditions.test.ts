@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hiddenItemIds, offsetDueDate } from '../conditions'
+import { hiddenItemIds, offsetDueDate, visibleProgress } from '../conditions'
 
 describe('hiddenItemIds', () => {
   it('shows unconditional items', () => {
@@ -45,5 +45,16 @@ describe('offsetDueDate', () => {
   it('is null without a due date or offset', () => {
     expect(offsetDueDate(null, 3)).toBeNull()
     expect(offsetDueDate(new Date(), null)).toBeNull()
+  })
+})
+
+describe('visibleProgress', () => {
+  it('counts only the items a condition shows', () => {
+    const items = [
+      { id: 'q', checked: true, result: 'fail' },
+      { id: 'why', checked: false, result: '', conditionItemId: 'q', conditionResult: 'fail' },
+      { id: 'photo', checked: false, result: '', conditionItemId: 'q', conditionResult: 'pass' },
+    ]
+    expect(visibleProgress(items)).toEqual({ done: 1, total: 2 })
   })
 })

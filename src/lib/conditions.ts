@@ -24,6 +24,13 @@ export function hiddenItemIds(items: ConditionalItem[]): Set<string> {
   return hidden
 }
 
+/** Ticked and total counts over the items a condition doesn't hide — the count the list itself shows. */
+export function visibleProgress(items: (ConditionalItem & { checked: boolean })[]): { done: number; total: number } {
+  const hidden = hiddenItemIds(items)
+  const shown = items.filter((i) => !hidden.has(i.id))
+  return { done: shown.filter((i) => i.checked).length, total: shown.length }
+}
+
 /** An item's own due date: `offsetDays` before the checklist's due date. */
 export function offsetDueDate(listDue: Date | null | undefined, offsetDays: number | null | undefined): Date | null {
   if (!listDue || offsetDays == null) return null

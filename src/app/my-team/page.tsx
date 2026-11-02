@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { checklistAccessWhere } from '@/lib/access'
+import { withoutHiddenItems } from '@/lib/checklist-helpers'
+import { visibleProgress } from '@/lib/conditions'
 import { AppShell } from '@/components/AppShell'
 import { MyTeamClient, type MyTeamPerson } from '@/components/MyTeamClient'
 
@@ -47,7 +49,7 @@ export default async function MyTeamPage() {
 
     // Only show work the viewer is themselves allowed to see.
     const access = checklistAccessWhere(session.user.id, session.user.role, session.user.organizationId)
-    const [items, checklists] = await Promise.all([
+    const [allItems, checklists] = await Promise.all([
       prisma.checklistItem.findMany({
         where: {
           assignedToId: { in: userIds },
@@ -56,6 +58,7 @@ export default async function MyTeamPage() {
         },
         select: {
           id: true,
+          checklistId: true,
           text: true,
           priority: true,
           dueDate: true,
@@ -71,10 +74,11 @@ export default async function MyTeamPage() {
           priority: true,
           dueDate: true,
           assignedToId: true,
-          items: { select: { checked: true } },
+  items: { select: { id: true, checked: true, result: true, conditionItemId: true, conditionResult: true } },
         },
       }),
     ])
+    const items = await withoutHiddenItems(allItems)
 
     people = userIds
       .map((userId) => {
@@ -101,8 +105,7 @@ export default async function MyTeamPage() {
               title: c.title,
               priority: c.priority,
               dueDate: c.dueDate?.toISOString() ?? null,
-              done: c.items.filter((i) => i.checked).length,
-              total: c.items.length,
+              ...visibleProgress(c.items),
             })),
         }
       })

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { visibleProgress } from '@/lib/conditions'
 import { checklistAccessWhere } from '@/lib/access'
 import { formatInTzPattern } from '@/lib/timezone'
 
@@ -54,7 +55,7 @@ export async function GET(request: Request) {
       createdBy: { select: { name: true } },
       assignedTo: { select: { name: true } },
       template: { select: { title: true } },
-      items: { select: { checked: true } },
+items: { select: { id: true, checked: true, result: true, conditionItemId: true, conditionResult: true } },
     },
     orderBy: [{ completedAt: 'desc' }, { createdAt: 'desc' }],
   })
@@ -89,8 +90,8 @@ export async function GET(request: Request) {
       fmt(c.createdAt),
       fmt(c.dueDate),
       fmt(c.completedAt),
-      String(c.items.length),
-      String(c.items.filter((i) => i.checked).length),
+      String(visibleProgress(c.items).total),
+      String(visibleProgress(c.items).done),
     ]
       .map(csvCell)
       .join(',')

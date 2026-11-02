@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { sendEmail } from '@/lib/email'
+import { withoutHiddenItems } from '@/lib/checklist-helpers'
 import { formatInTz } from '@/lib/timezone'
 
 const WINDOW_DAYS = 7
@@ -51,7 +52,7 @@ export async function runMyDigest(): Promise<{ sent: number }> {
 
   let sent = 0
   for (const user of users) {
-    const [lists, items] = await Promise.all([
+    const [lists, allItems] = await Promise.all([
       prisma.checklist.findMany({
         where: { status: 'active', assignedToId: user.id, dueDate: { not: null, lte: horizon } },
         select: { id: true, title: true, dueDate: true },
@@ -63,9 +64,10 @@ export async function runMyDigest(): Promise<{ sent: number }> {
           dueDate: { not: null, lte: horizon },
           checklist: { status: 'active' },
         },
-        select: { text: true, dueDate: true, checklist: { select: { id: true, title: true } } },
+        select: { id: true, checklistId: true, text: true, dueDate: true, checklist: { select: { id: true, title: true } } },
       }),
     ])
+    const items = await withoutHiddenItems(allItems)
 
     const listRows = splitDigestRows(
       lists.map((c) => ({ title: c.title, dueDate: c.dueDate, href: link(c.id) })),

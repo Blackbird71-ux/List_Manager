@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { CheckCircle2, ChevronLeft, ChevronRight, Download, Lock, Search } from 'lucide-react'
 import type { ApiChecklist } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { hiddenItemIds } from '@/lib/conditions'
+import { hiddenItemIds, visibleProgress } from '@/lib/conditions'
 
 export function CompletedClient() {
   const [checklists, setChecklists] = useState<ApiChecklist[]>([])
@@ -140,7 +140,7 @@ export function CompletedClient() {
               </h2>
               <div className="overflow-hidden rounded-xl border border-border bg-panel">
                 {lists.map((c, idx) => {
-                  const done = c.items.filter((i) => i.checked).length
+                  const { done, total } = visibleProgress(c.items)
                   const hidden = hiddenItemIds(c.items)
                   const openActions = c.items.filter((i) => !hidden.has(i.id) && i.result === 'fail' && !i.actionClosedAt).length
                   return (
@@ -156,7 +156,7 @@ export function CompletedClient() {
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-ink">{c.title}</p>
                         <p className="text-xs text-faint">
-                          {c.category} · {done}/{c.items.length} items
+                          {c.category} · {done}/{total} items
                           {c.assignedTo ? ` · ${c.assignedTo.name}` : ''}
                         </p>
                       </div>
